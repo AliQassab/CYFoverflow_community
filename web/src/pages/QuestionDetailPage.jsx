@@ -89,11 +89,31 @@ function QuestionDetailPage() {
 		}
 	}, [location.hash, answers, loading, question]);
 
+	// Auto-show answer form if user was redirected from login
+	useEffect(() => {
+		if (isLoggedIn && !loading && question) {
+			const searchParams = new URLSearchParams(location.search);
+			if (searchParams.get("answer") === "true") {
+				setShowAnswerForm(true);
+				// Remove the query parameter from URL without reloading
+				const newUrl = window.location.pathname + (location.hash || "");
+				window.history.replaceState({}, "", newUrl);
+				// Scroll to answer form after a short delay
+				setTimeout(() => {
+					answerFormRef.current?.scrollIntoView({
+						behavior: "smooth",
+						block: "start",
+					});
+				}, 300);
+			}
+		}
+	}, [isLoggedIn, loading, question, location.search, location.hash]);
+
 	const handleAnswerClick = () => {
 		if (!isLoggedIn) {
 			const returnTo = question?.slug
-				? `/questions/${question.slug}`
-				: `/questions/${identifier}`;
+				? `/questions/${question.slug}?answer=true`
+				: `/questions/${identifier}?answer=true`;
 			navigate("/login", {
 				state: {
 					message: "Please log in to answer questions",

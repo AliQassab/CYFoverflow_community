@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { HiEye, HiEyeOff } from "react-icons/hi";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 
 import BackButton from "../components/BackButton";
 import { useAuth } from "../contexts/useAuth";
@@ -11,6 +11,7 @@ function Login() {
 	const [showPassword, setShowPassword] = useState(false);
 	const [error, setError] = useState("");
 	const navigate = useNavigate();
+	const location = useLocation();
 	const { login } = useAuth();
 
 	const handleSubmit = async (e) => {
@@ -24,7 +25,9 @@ function Login() {
 
 		try {
 			await login(email, password);
-			navigate("/");
+			// Redirect to the page the user was trying to access, or home
+			const returnTo = location.state?.returnTo || "/";
+			navigate(returnTo);
 		} catch (error) {
 			setError(error.message || "Login failed. Please try again.");
 		}
@@ -53,6 +56,11 @@ function Login() {
 					</div>
 
 					<form className="space-y-5" onSubmit={handleSubmit}>
+						{location.state?.message && (
+							<div className="bg-blue-50 border-l-4 border-blue-500 text-blue-700 px-4 py-3 rounded-md text-sm">
+								{location.state.message}
+							</div>
+						)}
 						{error && (
 							<div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-md text-sm">
 								{error}
