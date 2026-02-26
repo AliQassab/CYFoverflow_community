@@ -27,6 +27,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * @property {string} storageType
  * @property {string} uploadDir
  * @property {string=} s3BaseUrl
+ * @property {boolean} isTest
  *
  * @typedef {import("node-pg-migrate/dist/runner.js").RunnerOption} RunnerOption
  * @typedef {import("node-pg-migrate/dist/runner.js").RunnerOptionUrl} RunnerOptionUrl
@@ -66,6 +67,7 @@ const createConfig = (overrides) => {
 		},
 		port: parseInt(source.PORT ?? "3000", 10),
 		production: source.NODE_ENV?.toLowerCase() === "production",
+		isTest: source.NODE_ENV?.toLowerCase() === "test",
 		timestamp:
 			source.TIMESTAMP?.toLowerCase() === "true" || !!source.TIMESTAMP_FORMAT,
 		timestampFormat: source.TIMESTAMP_FORMAT,

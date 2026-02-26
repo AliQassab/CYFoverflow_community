@@ -8,7 +8,7 @@ await connectDb();
 
 const { default: app } = await import("./app.js");
 
-app.listen(port, (err) => {
+app.listen(port, "0.0.0.0", (err) => {
 	if (err) {
 		throw err;
 	}

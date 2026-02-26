@@ -11,7 +11,7 @@ beforeAll(async () => {
 	dbContainer = await new PostgreSqlContainer("postgres:17-alpine").start();
 	const url = new URL(dbContainer.getConnectionUri());
 	url.searchParams.set("sslmode", url.searchParams.get("sslmode") ?? "disable");
-	config.init({ DATABASE_URL: url.toString(), PORT: "0" });
+	config.init({ DATABASE_URL: url.toString(), PORT: "0", NODE_ENV: "test" });
 	await applyMigrations();
 	await connectDb();
 }, 60_000);

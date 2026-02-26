@@ -5,6 +5,7 @@
 import rateLimit from "express-rate-limit";
 import slowDown from "express-slow-down";
 
+import config from "./config.js";
 import logger from "./logger.js";
 
 /**
@@ -14,6 +15,13 @@ import logger from "./logger.js";
 export const generalLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 minutes
 	max: 100, // Limit each IP to 100 requests per windowMs
+	skip: () => {
+		try {
+			return config.isTest;
+		} catch {
+			return false;
+		}
+	},
 	message: {
 		error: "Too many requests from this IP, please try again later.",
 	},
@@ -38,6 +46,13 @@ export const generalLimiter = rateLimit({
 export const authLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 minutes
 	max: 5, // Limit each IP to 5 login/signup attempts per windowMs
+	skip: () => {
+		try {
+			return config.isTest;
+		} catch {
+			return false;
+		}
+	},
 	message: {
 		error: "Too many authentication attempts, please try again later.",
 	},
@@ -63,6 +78,13 @@ export const authLimiter = rateLimit({
 export const sensitiveLimiter = rateLimit({
 	windowMs: 60 * 60 * 1000, // 1 hour
 	max: 3, // Limit each IP to 3 requests per hour
+	skip: () => {
+		try {
+			return config.isTest;
+		} catch {
+			return false;
+		}
+	},
 	message: {
 		error: "Too many requests for this operation, please try again later.",
 	},
@@ -89,4 +111,11 @@ export const speedLimiter = slowDown({
 	delayMs: () => 500, // Add 500ms delay per request after delayAfter (v2 API)
 	maxDelayMs: 20000, // Maximum delay of 20 seconds
 	skipSuccessfulRequests: false,
+	skip: () => {
+		try {
+			return config.isTest;
+		} catch {
+			return false;
+		}
+	},
 });
