@@ -59,7 +59,7 @@ describe("Authentication - Login", () => {
 				.send({ email: "jane@example.com", password: "Password123!" })
 				.expect(200);
 
-			expect(response.body).toHaveProperty("token");
+			expect(response.body).toHaveProperty("accessToken");
 			expect(response.body).toHaveProperty("user");
 			expect(response.body.user).toHaveProperty("id");
 			expect(response.body.user).toHaveProperty("name", userData.name);

@@ -24,15 +24,15 @@ describe("Authentication", () => {
 				.send(userData)
 				.expect(201);
 
-			expect(response.body).toHaveProperty("newUser");
-			expect(response.body).toHaveProperty("token");
-			expect(response.body.newUser).toHaveProperty("id");
-			expect(response.body.newUser).toHaveProperty("name");
-			expect(response.body.newUser).toHaveProperty("email");
-			expect(response.body.newUser.name).toBe(userData.name);
-			expect(response.body.newUser.email).toBe(userData.email.toLowerCase());
-			expect(response.body.newUser.password_hash).toBeUndefined();
-			expect(response.body.token).toBeTruthy();
+			expect(response.body).toHaveProperty("user");
+			expect(response.body).toHaveProperty("accessToken");
+			expect(response.body.user).toHaveProperty("id");
+			expect(response.body.user).toHaveProperty("name");
+			expect(response.body.user).toHaveProperty("email");
+			expect(response.body.user.name).toBe(userData.name);
+			expect(response.body.user.email).toBe(userData.email.toLowerCase());
+			expect(response.body.user.password_hash).toBeUndefined();
+			expect(response.body.accessToken).toBeTruthy();
 		});
 
 		it("should normalize email to lowercase", async () => {
@@ -49,7 +49,7 @@ describe("Authentication", () => {
 				.send(userData)
 				.expect(201);
 
-			expect(response.body.newUser.email).toBe("jane@example.com");
+			expect(response.body.user.email).toBe("jane@example.com");
 		});
 
 		it("should trim whitespace from name and email", async () => {
@@ -66,8 +66,8 @@ describe("Authentication", () => {
 				.send(userData)
 				.expect(201);
 
-			expect(response.body.newUser.name).toBe("Bob Wilson");
-			expect(response.body.newUser.email).toBe("bob@example.com");
+			expect(response.body.user.name).toBe("Bob Wilson");
+			expect(response.body.user.email).toBe("bob@example.com");
 		});
 
 		it("should hash the password before storing", async () => {
@@ -307,9 +307,9 @@ describe("Authentication", () => {
 				.send(userData)
 				.expect(201);
 
-			const tokenParts = response.body.token.split(".");
+			const tokenParts = response.body.accessToken.split(".");
 			expect(tokenParts).toHaveLength(3);
-			expect(response.body.token.length).toBeGreaterThan(50);
+			expect(response.body.accessToken.length).toBeGreaterThan(50);
 		});
 	});
 });
