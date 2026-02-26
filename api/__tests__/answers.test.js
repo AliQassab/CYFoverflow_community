@@ -55,6 +55,6 @@ describe("Answers API", () => {
 
 	it("DELETE /answers/:id deletes an answer", async () => {
 		const res = await supertest(app).delete("/1").expect(200);
-		expect(res.body).toEqual({ message: "Answer deleted" });
+		expect(res.body).toEqual({ message: "Answer deleted successfully" });
 	});
 });
