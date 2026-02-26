@@ -1,4 +1,6 @@
 // api/emails/templates/answerNotificationTemplate.js
+import { escapeHtml } from "./templateUtils.js";
+
 export const getAnswerNotificationHtml = ({
 	questionAuthorName,
 	questionTitle,
@@ -6,6 +8,12 @@ export const getAnswerNotificationHtml = ({
 	answerContent,
 	questionUrl,
 }) => {
+	// Escape user-provided content to prevent XSS
+	const safeAuthorName = escapeHtml(questionAuthorName || "there");
+	const safeQuestionTitle = escapeHtml(questionTitle || "");
+	const safeAnswererName = escapeHtml(answererName || "A fellow learner");
+	const safeAnswerContent = escapeHtml(answerContent || "");
+	const safeQuestionUrl = escapeHtml(questionUrl || "");
 	return `
         <!DOCTYPE html>
         <html>
@@ -75,17 +83,17 @@ export const getAnswerNotificationHtml = ({
                     <p>Someone answered your question!</p>
                 </div>
                 <div class="content">
-                    <h2>Hello ${questionAuthorName || "there"}!</h2>
+                    <h2>Hello ${safeAuthorName}!</h2>
                     
-                    <p><span class="highlight">Your Question:</span><br>${questionTitle}</p>
+                    <p><span class="highlight">Your Question:</span><br>${safeQuestionTitle}</p>
                     
                     <div class="answer-box">
-                        <p><span class="highlight">👤 Answered by ${answererName || "A fellow learner"}:</span></p>
-                        <p>${answerContent}</p>
+                        <p><span class="highlight">👤 Answered by ${safeAnswererName}:</span></p>
+                        <p>${safeAnswerContent}</p>
                     </div>
                     
                     <p style="text-align: center;">
-                        <a href="${questionUrl}" class="btn">View Full Answer & Respond</a>
+                        <a href="${safeQuestionUrl}" class="btn">View Full Answer & Respond</a>
                     </p>
                     
                     <p>Click the button above to view the complete answer and continue the discussion with the community.</p>
@@ -110,17 +118,27 @@ export const getAnswerNotificationText = ({
 	answerContent,
 	questionUrl,
 }) => {
+	// Remove HTML tags and trim for plain text version
+	const cleanTitle = (questionTitle || "").replace(/<[^>]*>/g, "").trim();
+	const cleanAnswererName = (answererName || "A fellow learner")
+		.replace(/<[^>]*>/g, "")
+		.trim();
+	const cleanAnswerContent = (answerContent || "")
+		.replace(/<[^>]*>/g, "")
+		.trim();
+	const cleanUrl = (questionUrl || "").trim();
+
 	return `NEW ANSWER ON CYFOVERFLOW
 
 Hello!
 
-Your question "${questionTitle}" has received a new answer.
+Your question "${cleanTitle}" has received a new answer.
 
-Answer by ${answererName || "A fellow learner"}:
-${answerContent}
+Answer by ${cleanAnswererName}:
+${cleanAnswerContent}
 
 View the full answer and reply:
-${questionUrl}
+${cleanUrl}
 
 ---
 This email was sent by CYFoverflow at cyf.academy.

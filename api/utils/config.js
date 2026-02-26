@@ -17,6 +17,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * @property {boolean} production
  * @property {boolean} timestamp
  * @property {string=} timestampFormat
+ * @property {string} emailSource
+ * @property {string} emailRegion
+ * @property {string} appUrl
+ * @property {string=} emailMode
+ * @property {string=} awsAccessKeyId
+ * @property {string=} awsSecretAccessKey
+ * @property {string} frontendUrl
  *
  * @typedef {import("node-pg-migrate/dist/runner.js").RunnerOption} RunnerOption
  * @typedef {import("node-pg-migrate/dist/runner.js").RunnerOptionUrl} RunnerOptionUrl
@@ -59,6 +66,16 @@ const createConfig = (overrides) => {
 		timestamp:
 			source.TIMESTAMP?.toLowerCase() === "true" || !!source.TIMESTAMP_FORMAT,
 		timestampFormat: source.TIMESTAMP_FORMAT,
+		emailSource: source.EMAIL_SOURCE || "info@cyf.academy",
+		emailRegion: source.EMAIL_REGION || "eu-west-1",
+		appUrl:
+			source.APP_URL ||
+			source.VITE_APP_URL ||
+			"https://cyfoverflow.hosting.codeyourfuture.io",
+		emailMode: source.EMAIL_MODE,
+		awsAccessKeyId: source.AWS_ACCESS_KEY_ID,
+		awsSecretAccessKey: source.AWS_SECRET_ACCESS_KEY,
+		frontendUrl: source.FRONTEND_URL || "http://localhost:5173",
 	};
 };
 /** @type {Config} */

@@ -9,6 +9,8 @@ import {
 	updateAnswer,
 	deleteAnswer,
 	getAnswersByUserId,
+	getAnswersByUserIdCount,
+	acceptAnswer,
 } from "./answerService.js";
 
 const router = express.Router();
@@ -29,16 +31,29 @@ router.post("/", authenticateToken(), async (req, res) => {
 router.get("/user/me", authenticateToken(), async (req, res) => {
 	try {
 		const userId = req.user.id;
-		logger.info("Getting answers for logged-in user", { userId });
+		const limit = req.query.limit ? Number.parseInt(req.query.limit, 10) : null;
+		const page = req.query.page ? Number.parseInt(req.query.page, 10) : null;
 
-		const answers = await getAnswersByUserId(userId);
+		const paginationLimit = page ? limit || 10 : limit;
 
-		logger.info("Returning answers for user", {
-			userId,
-			count: answers.length,
-		});
+		const answers = await getAnswersByUserId(userId, paginationLimit, page);
 
-		res.json(answers);
+		if (page) {
+			const total = await getAnswersByUserIdCount(userId);
+			const totalPages = Math.ceil(total / paginationLimit);
+
+			res.json({
+				answers,
+				pagination: {
+					currentPage: page,
+					totalPages,
+					totalItems: total,
+					itemsPerPage: paginationLimit,
+				},
+			});
+		} else {
+			res.json(answers);
+		}
 	} catch (error) {
 		logger.error("Get answers by user error: %O", error);
 		res.status(500).json({ message: error.message });
@@ -48,7 +63,8 @@ router.get("/user/me", authenticateToken(), async (req, res) => {
 router.get("/:questionId", async (req, res) => {
 	try {
 		const { questionId } = req.params;
-		const answers = await getAnswersByQuestionId(questionId);
+		const userId = req.user?.id || null; // Get user ID if authenticated
+		const answers = await getAnswersByQuestionId(questionId, userId);
 		res.json(answers);
 	} catch (error) {
 		logger.error("Get answers by questionId error: %O", error);
@@ -75,11 +91,50 @@ router.delete("/:id", authenticateToken(), async (req, res) => {
 		const { id } = req.params;
 		const userId = req.user.id;
 
-		await deleteAnswer(id, userId);
-		res.json({ message: "Answer deleted" });
+		const deleted = await deleteAnswer(id, userId);
+
+		if (!deleted) {
+			logger.warn("Answer deletion failed - not found or already deleted", {
+				answerId: id,
+				userId,
+			});
+			return res
+				.status(404)
+				.json({ message: "Answer not found or already deleted" });
+		}
+
+		res.json({ message: "Answer deleted successfully" });
 	} catch (error) {
 		logger.error("Delete answer error: %O", error);
-		res.status(500).json({ message: error.message });
+		const statusCode =
+			error.message === "Answer not found"
+				? 404
+				: error.message.includes("Unauthorized")
+					? 403
+					: 500;
+		res
+			.status(statusCode)
+			.json({ message: error.message || "Failed to delete answer" });
+	}
+});
+
+router.patch("/:id/accept", authenticateToken(), async (req, res) => {
+	try {
+		const { id } = req.params;
+		const userId = req.user.id;
+
+		const acceptedAnswer = await acceptAnswer(id, userId);
+		res.json(acceptedAnswer);
+	} catch (error) {
+		logger.error("Accept answer error: %O", error);
+		const statusCode =
+			error.message === "Answer not found" ||
+			error.message === "Question not found"
+				? 404
+				: error.message.includes("Unauthorized")
+					? 403
+					: 500;
+		res.status(statusCode).json({ message: error.message });
 	}
 });
 

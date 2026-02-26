@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 
 import LabelBadge from "../components/LabelBadge";
+import PaginationControls from "../components/PaginationControls";
 import Sidebar from "../components/Sidebar";
+import UserLink from "../components/UserLink";
 import { useLabelFilter } from "../contexts/LabelFilterContext";
 import { useSearch } from "../contexts/SearchContext";
 import { useAuth } from "../contexts/useAuth";
@@ -15,6 +17,7 @@ import {
 
 function MyQuestionsPage() {
 	const navigate = useNavigate();
+	const location = useLocation();
 	const { token, isLoggedIn, user } = useAuth();
 	const { searchTerm, setSearchTerm } = useSearch();
 	const { setSelectedLabel: setGlobalSelectedLabel } = useLabelFilter();
@@ -22,6 +25,11 @@ function MyQuestionsPage() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const [selectedLabel, setSelectedLabel] = useState(null);
+	const [pagination, setPagination] = useState(null);
+
+	const searchParams = new URLSearchParams(location.search);
+	const currentPageFromUrl = parseInt(searchParams.get("page") || "1", 10);
+	const itemsPerPage = 10;
 
 	useEffect(() => {
 		setGlobalSelectedLabel(null);
@@ -59,34 +67,75 @@ function MyQuestionsPage() {
 		});
 	};
 
-	useEffect(() => {
-		const fetchMyQuestions = async () => {
-			try {
-				const response = await fetch("/api/questions/my-questions", {
+	const fetchMyQuestions = useCallback(async () => {
+		if (!token) {
+			setError("Authentication token missing. Please log in again.");
+			setLoading(false);
+			return;
+		}
+
+		try {
+			setLoading(true);
+			setError(null);
+
+			const response = await fetch(
+				`/api/questions/my-questions?page=${currentPageFromUrl}&limit=${itemsPerPage}`,
+				{
 					headers: {
 						Authorization: `Bearer ${token}`,
+						"Content-Type": "application/json",
 					},
-				});
+				},
+			);
 
-				const data = await response.json();
+			const data = await response.json();
 
-				if (!response.ok) throw new Error(data.error);
-
-				setQuestions(data);
-			} catch (err) {
-				setError(err.message || "Failed to load your questions.");
-			} finally {
-				setLoading(false);
+			if (!response.ok) {
+				if (response.status === 401) {
+					setError("Session expired. Please log in again.");
+				} else {
+					throw new Error(
+						data.message || data.error || "Failed to load your questions.",
+					);
+				}
+				return;
 			}
-		};
 
+			if (data.pagination) {
+				setQuestions(data.questions);
+				setPagination(data.pagination);
+			} else {
+				setQuestions(data);
+				setPagination(null);
+			}
+		} catch (err) {
+			setError(err.message || "Failed to load your questions.");
+		} finally {
+			setLoading(false);
+		}
+	}, [token, currentPageFromUrl, itemsPerPage]);
+
+	useEffect(() => {
 		if (isLoggedIn && token) {
 			fetchMyQuestions();
 		} else {
 			setError("You must be logged in to view your questions.");
 			setLoading(false);
 		}
-	}, [isLoggedIn, token]);
+	}, [isLoggedIn, token, fetchMyQuestions]);
+
+	const handlePageChange = (newPage) => {
+		const newSearchParams = new URLSearchParams(location.search);
+		if (newPage === 1) {
+			newSearchParams.delete("page");
+		} else {
+			newSearchParams.set("page", newPage.toString());
+		}
+		navigate(`${location.pathname}?${newSearchParams.toString()}`, {
+			replace: true,
+		});
+		window.scrollTo({ top: 0, behavior: "smooth" });
+	};
 
 	return (
 		<div className="min-h-screen bg-gray-50">
@@ -135,6 +184,15 @@ function MyQuestionsPage() {
 										No questions found matching your search.
 									</p>
 								)}
+							{pagination && (
+								<div className="mb-4">
+									<PaginationControls
+										currentPage={pagination.currentPage}
+										totalPages={pagination.totalPages}
+										onPageChange={handlePageChange}
+									/>
+								</div>
+							)}
 							<div className="space-y-3 md:space-y-4 mt-4 md:mt-6">
 								{filteredQuestions.map((question) => (
 									<div
@@ -224,10 +282,14 @@ function MyQuestionsPage() {
 										<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-0 mt-2 sm:mt-3 text-xs sm:text-sm text-gray-500">
 											<span>
 												Asked by{" "}
-												{question.author_name ||
-													question.author?.name ||
-													user?.name ||
-													"Anonymous"}
+												<UserLink
+													userId={question.user_id}
+													userName={
+														question.author_name ||
+														question.author?.name ||
+														user?.name
+													}
+												/>
 											</span>
 											<span>
 												{new Date(question.created_at).toLocaleDateString(
@@ -245,6 +307,15 @@ function MyQuestionsPage() {
 									</div>
 								))}
 							</div>
+							{pagination && (
+								<div className="mt-6">
+									<PaginationControls
+										currentPage={pagination.currentPage}
+										totalPages={pagination.totalPages}
+										onPageChange={handlePageChange}
+									/>
+								</div>
+							)}
 						</div>
 					</main>
 				</div>

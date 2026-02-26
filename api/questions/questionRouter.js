@@ -1,5 +1,6 @@
 import express from "express";
 
+import { getSimilarQuestions } from "../similarQuestions/similarQuestionsService.js";
 import { authenticateToken } from "../utils/auth.js";
 import logger from "../utils/logger.js";
 
@@ -8,6 +9,7 @@ import {
 	getAllQuestions,
 	getQuestionById,
 	getQuestionsByUserId,
+	getQuestionsByUserIdCount,
 	updateQuestion,
 	deleteQuestion,
 	getAllLabels,
@@ -22,8 +24,33 @@ const router = express.Router();
 
 router.get("/my-questions", authenticateToken(), async (req, res) => {
 	try {
-		const questions = await getQuestionsByUserId(req.user.id);
-		res.json(questions);
+		const limit = req.query.limit ? Number.parseInt(req.query.limit, 10) : null;
+		const page = req.query.page ? Number.parseInt(req.query.page, 10) : null;
+
+		const paginationLimit = page ? limit || 10 : limit;
+
+		const questions = await getQuestionsByUserId(
+			req.user.id,
+			paginationLimit,
+			page,
+		);
+
+		if (page) {
+			const total = await getQuestionsByUserIdCount(req.user.id);
+			const totalPages = Math.ceil(total / paginationLimit);
+
+			res.json({
+				questions,
+				pagination: {
+					currentPage: page,
+					totalPages,
+					totalItems: total,
+					itemsPerPage: paginationLimit,
+				},
+			});
+		} else {
+			res.json(questions);
+		}
 	} catch (error) {
 		logger.error("Get my questions error: %O", error);
 		res.status(500).json({ error: "failed to fetch user's questions" });
@@ -104,7 +131,7 @@ router.get("/", async (req, res) => {
 
 router.get("/search", async (req, res) => {
 	try {
-		const { q, limit, page } = req.query;
+		const { q, limit, page, solved, sortBy, dateRange, labelIds } = req.query;
 
 		if (!q || !q.trim()) {
 			return res.status(400).json({ error: "Search query is required" });
@@ -114,14 +141,33 @@ router.get("/search", async (req, res) => {
 		const searchPage = page ? Number.parseInt(page, 10) : null;
 		const paginationLimit = searchPage ? searchLimit || 10 : searchLimit;
 
+		// Parse filter options
+		const options = {};
+		if (solved !== undefined) {
+			options.solved = solved === "true" || solved === "1";
+		}
+		if (sortBy) {
+			options.sortBy = sortBy;
+		}
+		if (dateRange) {
+			options.dateRange = dateRange;
+		}
+		if (labelIds) {
+			// labelIds can be comma-separated string or array
+			options.labelIds = Array.isArray(labelIds)
+				? labelIds.map((id) => Number.parseInt(id, 10))
+				: labelIds.split(",").map((id) => Number.parseInt(id.trim(), 10));
+		}
+
 		const questions = await searchQuestionsByText(
 			q,
 			paginationLimit,
 			searchPage,
+			options,
 		);
 
 		if (searchPage) {
-			const total = await getSearchQuestionsCount(q);
+			const total = await getSearchQuestionsCount(q, options);
 			const totalPages = Math.ceil(total / paginationLimit);
 
 			res.json({
@@ -151,6 +197,73 @@ router.get("/labels/all", async (__, res) => {
 	} catch (error) {
 		logger.error("Get labels error: %O", error);
 		res.status(500).json({ error: "failed to fetch labels" });
+	}
+});
+
+/**
+ * POST /api/questions/search-similar
+ * Search for similar questions before posting (for suggestions)
+ * Body: { title: string, content: string, limit?: number }
+ * IMPORTANT: Must be before /:id routes to avoid conflicts
+ */
+router.post("/search-similar", async (req, res) => {
+	try {
+		const { title, content, limit = 5 } = req.body;
+
+		if (!title || !title.trim()) {
+			return res.status(400).json({ error: "Title is required" });
+		}
+
+		// Use -1 as dummy questionId since question doesn't exist yet
+		const suggestions = await getSimilarQuestions(-1, {
+			limit: parseInt(limit, 10) || 5,
+			questionTitle: title.trim(),
+			questionContent: content || "",
+		});
+
+		res.json(suggestions);
+	} catch (error) {
+		logger.error("Search similar questions error: %O", error);
+		res.status(500).json({ error: "Failed to search for similar questions" });
+	}
+});
+
+/**
+ * GET /api/questions/:id/similar
+ * Get similar questions for a given question
+ * Query params:
+ *   - limit: number (default: 5)
+ *   - type: string ('similar', 'duplicate', 'related')
+ * IMPORTANT: This route must be defined BEFORE /:id to avoid route conflicts
+ */
+router.get("/:id/similar", async (req, res) => {
+	try {
+		const identifier = req.params.id;
+		const limit = req.query.limit ? parseInt(req.query.limit, 10) : 5;
+		const relationType = req.query.type || null;
+
+		// First, get the question to resolve slug to ID if needed
+		const question = await getQuestionById(identifier);
+		if (!question) {
+			return res.status(404).json({ error: "Question not found" });
+		}
+
+		const questionId = question.id;
+		if (!questionId) {
+			return res.status(400).json({ error: "Invalid question ID" });
+		}
+
+		const similarQuestions = await getSimilarQuestions(questionId, {
+			limit,
+			relationType,
+			questionTitle: question.title,
+			questionContent: question.content || question.body || "",
+		});
+
+		res.json(similarQuestions);
+	} catch (error) {
+		logger.error("Get similar questions error: %O", error);
+		res.status(500).json({ error: "Failed to fetch similar questions" });
 	}
 });
 

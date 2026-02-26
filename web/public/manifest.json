@@ -1,0 +1,18 @@
+{
+	"name": "CYFoverflow",
+	"short_name": "CYFoverflow",
+	"description": "Your community-powered platform for asking, learning, and sharing",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#efeef8",
+	"theme_color": "#281d80",
+	"orientation": "portrait-primary",
+	"icons": [
+		{
+			"src": "/favicon.svg",
+			"sizes": "any",
+			"type": "image/svg+xml",
+			"purpose": "any maskable"
+		}
+	]
+}

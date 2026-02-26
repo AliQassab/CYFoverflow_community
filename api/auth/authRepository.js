@@ -38,3 +38,40 @@ export async function findUserById(id) {
 		throw error;
 	}
 }
+
+/**
+ * Update user password
+ * @param {number} userId - User ID
+ * @param {string} hashedPassword - New hashed password
+ */
+export async function updateUserPasswordDB(userId, hashedPassword) {
+	try {
+		await db.query(
+			`UPDATE users 
+			 SET hashed_password = $1, updated_at = NOW()
+			 WHERE id = $2`,
+			[hashedPassword, userId],
+		);
+	} catch (error) {
+		logger.error("Error updating user password: %O", error);
+		throw error;
+	}
+}
+
+/**
+ * Get all active users (for notifications)
+ * @returns {Promise<Array>} Array of user objects with id
+ */
+export async function getAllUsers() {
+	try {
+		const result = await db.query(
+			`SELECT id FROM users 
+			 WHERE (deleted_at IS NULL)
+			 AND (is_active IS NULL OR is_active = true)`,
+		);
+		return result.rows;
+	} catch (error) {
+		logger.error("Error getting all users: %O", error);
+		throw error;
+	}
+}

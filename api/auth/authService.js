@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 
-import logger from "../utils/logger.js";
+import * as accountLockout from "../utils/accountLockout.js";
 
 import * as repository from "./authRepository.js";
 
@@ -14,31 +14,52 @@ export async function signUp(name, email, password) {
 	}
 
 	const hashedPassword = await bcrypt.hash(password, 10);
-	logger.debug(`Password for ${normalizedEmail} hashed successfully.`);
 
 	const newUser = await repository.createUser(
 		normalizedName,
 		normalizedEmail,
 		hashedPassword,
 	);
-	logger.info("New user created with ID: %s", normalizedEmail);
 	return newUser;
 }
 
-export async function login(email, password) {
+export async function login(email, password, ipAddress = null) {
 	const normalizedEmail = email.toLowerCase().trim();
+
+	const lockStatus = await accountLockout.checkAccountLocked(normalizedEmail);
+	if (lockStatus.locked) {
+		throw new Error(
+			`Account temporarily locked due to too many failed login attempts. Please try again in ${lockStatus.lockoutMinutes} minutes.`,
+		);
+	}
 
 	const user = await repository.findUserByEmail(normalizedEmail);
 	if (!user) {
+		if (ipAddress) {
+			await accountLockout.recordFailedAttempt(normalizedEmail, ipAddress);
+		}
 		throw new Error("Invalid credentials.");
 	}
 
 	const match = await bcrypt.compare(password, user.hashed_password);
 	if (!match) {
+		if (ipAddress) {
+			const attemptResult = await accountLockout.recordFailedAttempt(
+				normalizedEmail,
+				ipAddress,
+			);
+			if (attemptResult.locked) {
+				throw new Error(
+					`Account temporarily locked due to too many failed login attempts. Please try again in ${attemptResult.lockoutMinutes} minutes.`,
+				);
+			}
+		}
 		throw new Error("Invalid credentials.");
 	}
 
+	await accountLockout.clearFailedAttempts(normalizedEmail);
+
+	 
 	const { hashed_password: _, ...userWithoutPassword } = user;
-	logger.info("User logged in successfully: %s", normalizedEmail);
 	return userWithoutPassword;
 }

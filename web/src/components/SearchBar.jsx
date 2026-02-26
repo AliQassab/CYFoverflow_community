@@ -1,19 +1,83 @@
+import { useState, useEffect, useRef } from "react";
+
+import { getSearchHistory, addToSearchHistory } from "../utils/searchHistory";
+
 function SearchBar({
 	searchTerm = "",
 	onSearch,
 	placeholder = "Search questions and tags...",
 	selectedLabel = null,
+	showHistory = true,
 }) {
+	const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+	const [history, setHistory] = useState([]);
+	const searchInputRef = useRef(null);
+	const dropdownRef = useRef(null);
+
+	useEffect(() => {
+		if (showHistory) {
+			setHistory(getSearchHistory());
+		}
+	}, [showHistory]);
+
+	useEffect(() => {
+		const handleClickOutside = (event) => {
+			if (
+				dropdownRef.current &&
+				!dropdownRef.current.contains(event.target) &&
+				searchInputRef.current &&
+				!searchInputRef.current.contains(event.target)
+			) {
+				setShowHistoryDropdown(false);
+			}
+		};
+
+		document.addEventListener("mousedown", handleClickOutside);
+		return () => {
+			document.removeEventListener("mousedown", handleClickOutside);
+		};
+	}, []);
+
 	const handleChange = (e) => {
 		const value = e.target.value;
 		if (onSearch) {
 			onSearch(value);
+		}
+		if (showHistory && value.trim()) {
+			setShowHistoryDropdown(true);
+		} else {
+			setShowHistoryDropdown(false);
+		}
+	};
+
+	const handleFocus = () => {
+		if (showHistory && history.length > 0) {
+			setShowHistoryDropdown(true);
 		}
 	};
 
 	const handleClear = () => {
 		if (onSearch) {
 			onSearch("");
+		}
+		setShowHistoryDropdown(false);
+	};
+
+	const handleHistoryClick = (term) => {
+		if (onSearch) {
+			onSearch(term);
+			addToSearchHistory(term);
+		}
+		setShowHistoryDropdown(false);
+		if (searchInputRef.current) {
+			searchInputRef.current.blur();
+		}
+	};
+
+	const handleKeyDown = (e) => {
+		if (e.key === "Enter" && searchTerm.trim()) {
+			addToSearchHistory(searchTerm.trim());
+			setShowHistoryDropdown(false);
 		}
 	};
 
@@ -22,6 +86,13 @@ function SearchBar({
 		: placeholder;
 
 	const hasValue = searchTerm && searchTerm.trim().length > 0;
+
+	const filteredHistory = showHistory
+		? history.filter(
+				(term) =>
+					!searchTerm || term.toLowerCase().includes(searchTerm.toLowerCase()),
+			)
+		: [];
 
 	return (
 		<div className="flex-1 relative">
@@ -41,10 +112,13 @@ function SearchBar({
 				</svg>
 			</div>
 			<input
+				ref={searchInputRef}
 				type="text"
 				placeholder={dynamicPlaceholder}
 				value={searchTerm || ""}
 				onChange={handleChange}
+				onFocus={handleFocus}
+				onKeyDown={handleKeyDown}
 				className={`block w-full pl-11 ${hasValue ? "pr-10" : "pr-4"} py-2.5 bg-gray-50 border border-gray-200 rounded-full text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#281d80]/50 focus:border-[#281d80] focus:bg-white hover:border-gray-300 hover:bg-white transition-all duration-200 shadow-sm`}
 			/>
 			{hasValue && (
@@ -68,6 +142,26 @@ function SearchBar({
 						/>
 					</svg>
 				</button>
+			)}
+			{showHistory && showHistoryDropdown && filteredHistory.length > 0 && (
+				<div
+					ref={dropdownRef}
+					className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+				>
+					<div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-b border-gray-200">
+						Recent Searches
+					</div>
+					{filteredHistory.map((term, index) => (
+						<button
+							key={index}
+							type="button"
+							onClick={() => handleHistoryClick(term)}
+							className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+						>
+							{term}
+						</button>
+					))}
+				</div>
 			)}
 		</div>
 	);

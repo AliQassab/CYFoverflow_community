@@ -1,6 +1,9 @@
 import { Editor } from "@tinymce/tinymce-react";
 import { useState, useRef } from "react";
 
+import { useToast } from "../contexts/ToastContext";
+import { getUserFriendlyError, isOnline } from "../utils/errorMessages";
+
 const ANSWER_TEMPLATE = `
 	<div data-template="answer">
 		<h3>Answer Summary</h3>
@@ -16,6 +19,7 @@ const ANSWER_TEMPLATE = `
 `;
 
 function AnswerForm({ questionId, onSuccess, onCancel, token }) {
+	const { showError: showToastError, showSuccess } = useToast();
 	const [answerContent, setAnswerContent] = useState(ANSWER_TEMPLATE);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [submitError, setSubmitError] = useState("");
@@ -64,6 +68,14 @@ function AnswerForm({ questionId, onSuccess, onCancel, token }) {
 			return;
 		}
 
+		if (!isOnline()) {
+			const errorMsg =
+				"No internet connection. Please check your connection and try again.";
+			setSubmitError(errorMsg);
+			showToastError(errorMsg);
+			return;
+		}
+
 		setIsSubmitting(true);
 
 		const parser = new DOMParser();
@@ -96,12 +108,15 @@ function AnswerForm({ questionId, onSuccess, onCancel, token }) {
 			}
 
 			setAnswerContent(ANSWER_TEMPLATE);
+			showSuccess("Answer posted successfully!");
 			if (onSuccess) onSuccess();
 		} catch (err) {
-			console.error("Error submitting answer:", err);
-			setSubmitError(
-				err.message || "Failed to submit answer. Please try again.",
+			const friendlyError = getUserFriendlyError(
+				err,
+				"Failed to submit answer. Please try again.",
 			);
+			setSubmitError(friendlyError);
+			showToastError(friendlyError);
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -127,7 +142,147 @@ function AnswerForm({ questionId, onSuccess, onCancel, token }) {
 							statusbar: false,
 							plugins: "codesample link lists",
 							toolbar:
-								"undo redo | blocks | bold italic | bullist numlist | link | codesample",
+								"undo redo | blocks | bold italic | bullist numlist | link | codesample | customimage",
+							setup: (editor) => {
+								editor.ui.registry.addButton("customimage", {
+									icon: "image",
+									tooltip: "Upload image",
+									onAction: () => {
+										const input = document.createElement("input");
+										input.setAttribute("type", "file");
+										input.setAttribute("accept", "image/*");
+
+										input.onchange = async (e) => {
+											const file = e.target.files?.[0];
+											if (!file) return;
+
+											let notificationId = editor.notificationManager.open({
+												text: "Uploading image...",
+												type: "info",
+												timeout: 0,
+											});
+
+											const formData = new FormData();
+											formData.append("file", file);
+
+											try {
+												const xhr = new XMLHttpRequest();
+
+												xhr.upload.onprogress = (e) => {
+													if (e.lengthComputable) {
+														const percentComplete = Math.round(
+															(e.loaded / e.total) * 100,
+														);
+														editor.notificationManager.close(notificationId);
+														notificationId = editor.notificationManager.open({
+															text: `Uploading image... ${percentComplete}%`,
+															type: "info",
+															timeout: 0,
+														});
+													}
+												};
+
+												xhr.onreadystatechange = () => {
+													if (xhr.readyState === 4) {
+														editor.notificationManager.close(notificationId);
+
+														if (xhr.status === 200 || xhr.status === 201) {
+															try {
+																const json = JSON.parse(xhr.responseText);
+
+																if (json.success && json.file?.file_url) {
+																	const imgTag = `<p><img src="${json.file.file_url}" alt="${file.name}" /></p>`;
+																	editor.insertContent(imgTag);
+
+																	editor.notificationManager.open({
+																		text: "Image uploaded successfully",
+																		type: "success",
+																		timeout: 3000,
+																	});
+																} else {
+																	editor.notificationManager.open({
+																		text: `Failed to upload image: ${json.message || "Invalid response"}`,
+																		type: "error",
+																		timeout: 3000,
+																	});
+																}
+															} catch {
+																editor.notificationManager.open({
+																	text: "Failed to parse server response",
+																	type: "error",
+																	timeout: 3000,
+																});
+															}
+														} else {
+															editor.notificationManager.open({
+																text: `Upload failed: ${xhr.status} ${xhr.statusText}`,
+																type: "error",
+																timeout: 3000,
+															});
+														}
+													}
+												};
+
+												xhr.onerror = () => {
+													editor.notificationManager.close(notificationId);
+													editor.notificationManager.open({
+														text: "Upload failed - network error",
+														type: "error",
+														timeout: 3000,
+													});
+												};
+
+												xhr.onabort = () => {
+													editor.notificationManager.close(notificationId);
+													editor.notificationManager.open({
+														text: "Upload cancelled",
+														type: "error",
+														timeout: 3000,
+													});
+												};
+
+												xhr.ontimeout = () => {
+													editor.notificationManager.close(notificationId);
+													editor.notificationManager.open({
+														text: "Upload timeout - please try again",
+														type: "error",
+														timeout: 3000,
+													});
+												};
+
+												xhr.open("POST", "/api/upload");
+												xhr.setRequestHeader(
+													"Authorization",
+													`Bearer ${token}`,
+												);
+												xhr.timeout = 60000;
+												xhr.send(formData);
+											} catch (error) {
+												editor.notificationManager.close(notificationId);
+												editor.notificationManager.open({
+													text: `Upload error: ${error.message}`,
+													type: "error",
+													timeout: 3000,
+												});
+											}
+										};
+
+										input.click();
+									},
+								});
+
+								const togglePlaceholder = () => {
+									const placeholders = editor.dom.select(
+										".template-placeholder",
+									);
+									placeholders.forEach((node) => {
+										const hasText = node.textContent.trim().length > 0;
+										if (hasText) editor.dom.addClass(node, "has-text");
+										else editor.dom.removeClass(node, "has-text");
+									});
+								};
+								editor.on("init keyup change input", togglePlaceholder);
+							},
 							extended_valid_elements:
 								"p[class|data-placeholder],li[class|data-placeholder],div[data-template]",
 							content_style: `
@@ -141,19 +296,6 @@ function AnswerForm({ questionId, onSuccess, onCancel, token }) {
 									color: #9ca3af; font-style: italic; pointer-events: none;
 								}
 							`,
-							setup: (editor) => {
-								const togglePlaceholder = () => {
-									const placeholders = editor.dom.select(
-										".template-placeholder",
-									);
-									placeholders.forEach((node) => {
-										const hasText = node.textContent.trim().length > 0;
-										if (hasText) editor.dom.addClass(node, "has-text");
-										else editor.dom.removeClass(node, "has-text");
-									});
-								};
-								editor.on("init keyup change input", togglePlaceholder);
-							},
 						}}
 					/>
 				</div>

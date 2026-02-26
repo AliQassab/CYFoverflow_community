@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 
+import PaginationControls from "../components/PaginationControls";
 import Sidebar from "../components/Sidebar";
 import { useLabelFilter } from "../contexts/LabelFilterContext";
 import { useSearch } from "../contexts/SearchContext";
@@ -13,12 +14,18 @@ import {
 
 function MyResponsesPage() {
 	const navigate = useNavigate();
+	const location = useLocation();
 	const { token, isLoggedIn } = useAuth();
 	const { searchTerm } = useSearch();
 	const { setSelectedLabel } = useLabelFilter();
 	const [answers, setAnswers] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
+	const [pagination, setPagination] = useState(null);
+
+	const searchParams = new URLSearchParams(location.search);
+	const currentPageFromUrl = parseInt(searchParams.get("page") || "1", 10);
+	const itemsPerPage = 10;
 
 	useEffect(() => {
 		setSelectedLabel(null);
@@ -40,35 +47,177 @@ function MyResponsesPage() {
 		});
 	};
 
-	useEffect(() => {
-		const fetchMyAnswers = async () => {
-			try {
-				const response = await fetch("/api/answers/user/me", {
+	const fetchMyAnswers = useCallback(async () => {
+		if (!token) {
+			setError("Authentication token missing. Please log in again.");
+			setLoading(false);
+			return;
+		}
+
+		try {
+			setLoading(true);
+			setError(null);
+
+			const response = await fetch(
+				`/api/answers/user/me?page=${currentPageFromUrl}&limit=${itemsPerPage}`,
+				{
 					headers: {
 						Authorization: `Bearer ${token}`,
+						"Content-Type": "application/json",
 					},
-				});
+				},
+			);
 
-				if (!response.ok) {
-					throw new Error(`Failed to fetch answers: ${response.status}`);
+			if (!response.ok) {
+				const data = await response.json().catch(() => ({}));
+				if (response.status === 401) {
+					setError("Session expired. Please log in again.");
+				} else {
+					throw new Error(
+						data.message ||
+							data.error ||
+							`Failed to fetch answers: ${response.status}`,
+					);
 				}
+				return;
+			}
 
-				const data = await response.json();
+			const data = await response.json();
+			if (data.pagination) {
+				setAnswers(data.answers);
+				setPagination(data.pagination);
+			} else {
 				setAnswers(data);
-			} catch (err) {
-				console.error("Fetch error:", err);
-				setError(err.message || "Failed to load your responses.");
-			} finally {
-				setLoading(false);
+				setPagination(null);
+			}
+		} catch (err) {
+			setError(err.message || "Failed to load your responses.");
+		} finally {
+			setLoading(false);
+		}
+	}, [token, currentPageFromUrl, itemsPerPage]);
+
+	useEffect(() => {
+		if (!isLoggedIn || !token) {
+			setError("You must be logged in to view your responses.");
+			setLoading(false);
+			return;
+		}
+
+		// Check if an answer was deleted and refresh if needed
+		const answerDeleted = sessionStorage.getItem("answerDeleted");
+		const answerDeletedTimestamp = sessionStorage.getItem(
+			"answerDeletedTimestamp",
+		);
+
+		// Check if deletion happened recently (within last 5 minutes)
+		const shouldRefresh =
+			answerDeleted === "true" ||
+			(answerDeletedTimestamp &&
+				Date.now() - parseInt(answerDeletedTimestamp, 10) < 5 * 60 * 1000);
+
+		if (shouldRefresh) {
+			// Clear the flag immediately before fetching
+			sessionStorage.removeItem("answerDeleted");
+			sessionStorage.removeItem("answerDeletedTimestamp");
+		}
+
+		// Always fetch answers (will refresh if answer was deleted)
+		if (isLoggedIn && token) {
+			fetchMyAnswers();
+		}
+		 
+	}, [isLoggedIn, token, location.pathname, location.key, fetchMyAnswers]);
+
+	const handlePageChange = (newPage) => {
+		const newSearchParams = new URLSearchParams(location.search);
+		if (newPage === 1) {
+			newSearchParams.delete("page");
+		} else {
+			newSearchParams.set("page", newPage.toString());
+		}
+		navigate(`${location.pathname}?${newSearchParams.toString()}`, {
+			replace: true,
+		});
+		window.scrollTo({ top: 0, behavior: "smooth" });
+	};
+
+	// Listen for answer deletion events and refresh when page is visible
+	useEffect(() => {
+		if (!isLoggedIn || !token) return;
+
+		const handleAnswerDeleted = () => {
+			// Check current pathname dynamically (not from closure)
+			if (window.location.pathname === "/my-responses") {
+				const answerDeleted = sessionStorage.getItem("answerDeleted");
+				const answerDeletedTimestamp = sessionStorage.getItem(
+					"answerDeletedTimestamp",
+				);
+				// Refresh if flag is set OR if deletion happened recently (within last 5 minutes)
+				const shouldRefresh =
+					answerDeleted === "true" ||
+					(answerDeletedTimestamp &&
+						Date.now() - parseInt(answerDeletedTimestamp, 10) < 5 * 60 * 1000);
+				if (shouldRefresh) {
+					sessionStorage.removeItem("answerDeleted");
+					sessionStorage.removeItem("answerDeletedTimestamp");
+					fetchMyAnswers();
+				}
 			}
 		};
 
-		if (isLoggedIn && token) {
-			fetchMyAnswers();
-		} else {
-			setError("You must be logged in to view your responses.");
-			setLoading(false);
-		}
+		const handleVisibilityChange = () => {
+			if (
+				document.visibilityState === "visible" &&
+				window.location.pathname === "/my-responses"
+			) {
+				const answerDeleted = sessionStorage.getItem("answerDeleted");
+				const answerDeletedTimestamp = sessionStorage.getItem(
+					"answerDeletedTimestamp",
+				);
+				// Refresh if flag is set OR if deletion happened recently (within last 5 minutes)
+				const shouldRefresh =
+					answerDeleted === "true" ||
+					(answerDeletedTimestamp &&
+						Date.now() - parseInt(answerDeletedTimestamp, 10) < 5 * 60 * 1000);
+				if (shouldRefresh) {
+					sessionStorage.removeItem("answerDeleted");
+					sessionStorage.removeItem("answerDeletedTimestamp");
+					fetchMyAnswers();
+				}
+			}
+		};
+
+		const handleFocus = () => {
+			if (window.location.pathname === "/my-responses") {
+				const answerDeleted = sessionStorage.getItem("answerDeleted");
+				const answerDeletedTimestamp = sessionStorage.getItem(
+					"answerDeletedTimestamp",
+				);
+				// Refresh if flag is set OR if deletion happened recently (within last 5 minutes)
+				const shouldRefresh =
+					answerDeleted === "true" ||
+					(answerDeletedTimestamp &&
+						Date.now() - parseInt(answerDeletedTimestamp, 10) < 5 * 60 * 1000);
+				if (shouldRefresh) {
+					sessionStorage.removeItem("answerDeleted");
+					sessionStorage.removeItem("answerDeletedTimestamp");
+					fetchMyAnswers();
+				}
+			}
+		};
+
+		// Listen for custom event
+		window.addEventListener("answerDeleted", handleAnswerDeleted);
+		document.addEventListener("visibilitychange", handleVisibilityChange);
+		window.addEventListener("focus", handleFocus);
+
+		return () => {
+			window.removeEventListener("answerDeleted", handleAnswerDeleted);
+			document.removeEventListener("visibilitychange", handleVisibilityChange);
+			window.removeEventListener("focus", handleFocus);
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [isLoggedIn, token]);
 
 	return (
@@ -143,6 +292,15 @@ function MyResponsesPage() {
 										</p>
 									</div>
 								)}
+							{pagination && (
+								<div className="mb-4">
+									<PaginationControls
+										currentPage={pagination.currentPage}
+										totalPages={pagination.totalPages}
+										onPageChange={handlePageChange}
+									/>
+								</div>
+							)}
 							<div className="space-y-4 md:space-y-6 mt-4 md:mt-6">
 								{filteredAnswers.map((answer) => (
 									<div
@@ -309,6 +467,15 @@ function MyResponsesPage() {
 									</div>
 								))}
 							</div>
+							{pagination && (
+								<div className="mt-6">
+									<PaginationControls
+										currentPage={pagination.currentPage}
+										totalPages={pagination.totalPages}
+										onPageChange={handlePageChange}
+									/>
+								</div>
+							)}
 						</div>
 					</main>
 				</div>

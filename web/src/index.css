@@ -83,3 +83,28 @@ body {
 		display: block;
 	}
 }
+
+@keyframes slide-in {
+	from {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
+}
+
+.animate-slide-in {
+	animation: slide-in 0.3s ease-out;
+}
+
+/* Hide General tab content panel */
+.tox-dialog__body-content > [id*="general"],
+.tox-dialog__body-content > [id*="General"],
+.tox-dialog__body-content > [id*="source"],
+.tox-dialog__body-content > [id*="Source"],
+.tox-dialog__body-content > [class*="general"]:not([class*="upload"]),
+.tox-dialog__body-content > [class*="General"]:not([class*="upload"]) {
+	display: none !important;
+}

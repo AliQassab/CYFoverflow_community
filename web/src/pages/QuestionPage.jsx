@@ -2,13 +2,17 @@ import { Editor } from "@tinymce/tinymce-react";
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/useAuth";
+import { searchSimilarQuestions } from "../services/api";
+import { getUserFriendlyError, isOnline } from "../utils/errorMessages";
 
 import { TEMPLATES } from "./templates";
 
 const AskQuestionPage = () => {
 	const navigate = useNavigate();
 	const { token, isLoggedIn } = useAuth();
+	const { showError: showToastError, showSuccess } = useToast();
 
 	const [activeTemplate, setActiveTemplate] = useState(null);
 
@@ -25,6 +29,10 @@ const AskQuestionPage = () => {
 
 	const [labels, setLabels] = useState([]);
 	const [selectedLabels, setSelectedLabels] = useState([]);
+	const [similarQuestions, setSimilarQuestions] = useState([]);
+	const [showSimilarQuestions, setShowSimilarQuestions] = useState(false);
+	const [loadingSimilarQuestions, setLoadingSimilarQuestions] = useState(false);
+	const searchTimeoutRef = useRef(null);
 
 	const [templateFields, setTemplateFields] = useState({
 		"bug-report": { browser: "", os: "" },
@@ -89,9 +97,78 @@ const AskQuestionPage = () => {
 		});
 	};
 
+	// Debounced search for similar questions
+	const searchForSimilarQuestionsRef = useRef(null);
+
+	useEffect(() => {
+		// Define the search function
+		searchForSimilarQuestionsRef.current = (questionTitle, questionContent) => {
+			// Clear previous timeout
+			if (searchTimeoutRef.current) {
+				clearTimeout(searchTimeoutRef.current);
+			}
+
+			// Don't search if title is too short
+			if (!questionTitle || questionTitle.trim().length < 10) {
+				setSimilarQuestions([]);
+				return;
+			}
+
+			// Debounce: wait 1 second after user stops typing
+			searchTimeoutRef.current = setTimeout(async () => {
+				try {
+					setLoadingSimilarQuestions(true);
+					const results = await searchSimilarQuestions(
+						questionTitle.trim(),
+						questionContent || "",
+						5,
+					);
+
+					setSimilarQuestions(results || []);
+				} catch (error) {
+					console.error("Error searching for similar questions:", error);
+					setSimilarQuestions([]);
+				} finally {
+					setLoadingSimilarQuestions(false);
+				}
+			}, 1000); // 1 second delay
+		};
+	}, []);
+
+	// Search when title changes
+	useEffect(() => {
+		if (
+			title &&
+			title.trim().length >= 10 &&
+			editorRef.current &&
+			searchForSimilarQuestionsRef.current
+		) {
+			const content = editorRef.current.getContent();
+			searchForSimilarQuestionsRef.current(title, content);
+		} else {
+			setSimilarQuestions([]);
+		}
+
+		// Cleanup timeout on unmount
+		return () => {
+			if (searchTimeoutRef.current) {
+				clearTimeout(searchTimeoutRef.current);
+			}
+		};
+	}, [title]);
+
 	const handleEditorChange = (newContent, editor) => {
 		const textLength = editor.getContent({ format: "text" }).trim().length;
 		setCharCount(textLength);
+
+		// Search for similar questions when content changes (debounced)
+		if (
+			title &&
+			title.trim().length >= 10 &&
+			searchForSimilarQuestionsRef.current
+		) {
+			searchForSimilarQuestionsRef.current(title, newContent);
+		}
 	};
 
 	const handleSubmit = async (e) => {
@@ -163,6 +240,13 @@ const AskQuestionPage = () => {
 			return;
 		}
 
+		if (!isOnline()) {
+			showToastError(
+				"No internet connection. Please check your connection and try again.",
+			);
+			return;
+		}
+
 		setIsSubmitting(true);
 
 		let metaData = {};
@@ -181,7 +265,10 @@ const AskQuestionPage = () => {
 		const cleanContent = doc.body.innerHTML;
 
 		if (!cleanContent || !cleanContent.trim()) {
-			setError("Question content cannot be empty. Please provide details.");
+			const errorMsg =
+				"Question content cannot be empty. Please provide details.";
+			setError(errorMsg);
+			showToastError(errorMsg);
 			setIsSubmitting(false);
 			return;
 		}
@@ -211,10 +298,23 @@ const AskQuestionPage = () => {
 			if (!response.ok)
 				throw new Error(data.message || "Something went wrong.");
 
-			navigate("/");
+			// Check if there are similar questions suggested
+			if (data.similarQuestions && data.similarQuestions.length > 0) {
+				setSimilarQuestions(data.similarQuestions);
+				setShowSimilarQuestions(true);
+				// Don't navigate yet - let user review similar questions
+			} else {
+				// No similar questions, navigate immediately
+				showSuccess("Question posted successfully!");
+				navigate("/");
+			}
 		} catch (err) {
-			console.error("Submission Error:", err);
-			setError(err.message || "Failed to connect to the server.");
+			const friendlyError = getUserFriendlyError(
+				err,
+				"Failed to post question. Please try again.",
+			);
+			setError(friendlyError);
+			showToastError(friendlyError);
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -376,7 +476,163 @@ const AskQuestionPage = () => {
 										statusbar: false,
 										plugins: "codesample link lists",
 										toolbar:
-											"undo redo | blocks | bold italic | bullist numlist | link | codesample",
+											"undo redo | blocks | bold italic | bullist numlist | link | codesample | customimage",
+										setup: (editor) => {
+											// Replace default image button with custom upload button
+											editor.ui.registry.addButton("customimage", {
+												icon: "image",
+												tooltip: "Upload image",
+												onAction: () => {
+													const input = document.createElement("input");
+													input.setAttribute("type", "file");
+													input.setAttribute("accept", "image/*");
+
+													input.onchange = async (e) => {
+														const file = e.target.files?.[0];
+														if (!file) return;
+
+														let notificationId =
+															editor.notificationManager.open({
+																text: "Uploading image...",
+																type: "info",
+																timeout: 0,
+															});
+
+														const formData = new FormData();
+														formData.append("file", file);
+
+														try {
+															const xhr = new XMLHttpRequest();
+
+															xhr.upload.onprogress = (e) => {
+																if (e.lengthComputable) {
+																	const percentComplete = Math.round(
+																		(e.loaded / e.total) * 100,
+																	);
+																	editor.notificationManager.close(
+																		notificationId,
+																	);
+																	notificationId =
+																		editor.notificationManager.open({
+																			text: `Uploading image... ${percentComplete}%`,
+																			type: "info",
+																			timeout: 0,
+																		});
+																}
+															};
+
+															xhr.onreadystatechange = () => {
+																if (xhr.readyState === 4) {
+																	editor.notificationManager.close(
+																		notificationId,
+																	);
+
+																	if (
+																		xhr.status === 200 ||
+																		xhr.status === 201
+																	) {
+																		try {
+																			const json = JSON.parse(xhr.responseText);
+
+																			if (json.success && json.file?.file_url) {
+																				const imgTag = `<p><img src="${json.file.file_url}" alt="${file.name}" /></p>`;
+																				editor.insertContent(imgTag);
+
+																				editor.notificationManager.open({
+																					text: "Image uploaded successfully",
+																					type: "success",
+																					timeout: 3000,
+																				});
+																			} else {
+																				editor.notificationManager.open({
+																					text: `Failed to upload image: ${json.message || "Invalid response"}`,
+																					type: "error",
+																					timeout: 3000,
+																				});
+																			}
+																		} catch {
+																			editor.notificationManager.open({
+																				text: "Failed to parse server response",
+																				type: "error",
+																				timeout: 3000,
+																			});
+																		}
+																	} else {
+																		editor.notificationManager.open({
+																			text: `Upload failed: ${xhr.status} ${xhr.statusText}`,
+																			type: "error",
+																			timeout: 3000,
+																		});
+																	}
+																}
+															};
+
+															xhr.onerror = () => {
+																editor.notificationManager.close(
+																	notificationId,
+																);
+																editor.notificationManager.open({
+																	text: "Upload failed - network error",
+																	type: "error",
+																	timeout: 3000,
+																});
+															};
+
+															xhr.onabort = () => {
+																editor.notificationManager.close(
+																	notificationId,
+																);
+																editor.notificationManager.open({
+																	text: "Upload cancelled",
+																	type: "error",
+																	timeout: 3000,
+																});
+															};
+
+															xhr.ontimeout = () => {
+																editor.notificationManager.close(
+																	notificationId,
+																);
+																editor.notificationManager.open({
+																	text: "Upload timeout - please try again",
+																	type: "error",
+																	timeout: 3000,
+																});
+															};
+
+															xhr.open("POST", "/api/upload");
+															xhr.setRequestHeader(
+																"Authorization",
+																`Bearer ${token}`,
+															);
+															xhr.timeout = 60000;
+															xhr.send(formData);
+														} catch (error) {
+															editor.notificationManager.close(notificationId);
+															editor.notificationManager.open({
+																text: `Upload error: ${error.message}`,
+																type: "error",
+																timeout: 3000,
+															});
+														}
+													};
+
+													input.click();
+												},
+											});
+
+											const togglePlaceholder = () => {
+												const placeholders = editor.dom.select(
+													".template-placeholder",
+												);
+												placeholders.forEach((node) => {
+													const hasText = node.textContent.trim().length > 0;
+													if (hasText) editor.dom.addClass(node, "has-text");
+													else editor.dom.removeClass(node, "has-text");
+												});
+											};
+											editor.on("init keyup change input", togglePlaceholder);
+										},
 										extended_valid_elements:
 											"p[class|data-placeholder],li[class|data-placeholder],div[data-template]",
 										content_style: `
@@ -390,20 +646,6 @@ const AskQuestionPage = () => {
                                         color: #9ca3af; font-style: italic; pointer-events: none;
                                     }
                                 `,
-										setup: (editor) => {
-											// hide the placeholder CSS
-											const togglePlaceholder = () => {
-												const placeholders = editor.dom.select(
-													".template-placeholder",
-												);
-												placeholders.forEach((node) => {
-													const hasText = node.textContent.trim().length > 0;
-													if (hasText) editor.dom.addClass(node, "has-text");
-													else editor.dom.removeClass(node, "has-text");
-												});
-											};
-											editor.on("init keyup change input", togglePlaceholder);
-										},
 									}}
 								/>
 							</div>
@@ -538,6 +780,79 @@ const AskQuestionPage = () => {
 							</div>
 						)}
 
+						{/* Similar Questions Suggestions - Show BEFORE posting */}
+						{similarQuestions.length > 0 && !showSimilarQuestions && (
+							<div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">
+								<div className="flex items-start justify-between mb-3">
+									<h4 className="text-blue-800 font-semibold text-sm flex items-center gap-2">
+										<span>🔍</span>
+										<span>
+											Similar Questions Found ({similarQuestions.length})
+										</span>
+									</h4>
+									<button
+										type="button"
+										onClick={() => setSimilarQuestions([])}
+										className="text-blue-600 hover:text-blue-800 text-sm"
+									>
+										Dismiss
+									</button>
+								</div>
+								<p className="text-blue-700 text-xs mb-3">
+									We found questions that might be similar to yours. Check them
+									out before posting:
+								</p>
+								<div className="space-y-2 max-h-60 overflow-y-auto">
+									{similarQuestions.map((question) => (
+										<div
+											key={question.id}
+											onClick={() => {
+												const identifier = question.slug || question.id;
+												navigate(`/questions/${identifier}`);
+											}}
+											onKeyDown={(e) => {
+												if (e.key === "Enter" || e.key === " ") {
+													e.preventDefault();
+													const identifier = question.slug || question.id;
+													navigate(`/questions/${identifier}`);
+												}
+											}}
+											role="button"
+											tabIndex={0}
+											className="p-3 bg-white border border-blue-200 rounded-lg hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer"
+										>
+											<h5 className="font-medium text-gray-900 text-sm mb-1 line-clamp-2">
+												{question.title}
+											</h5>
+											<div className="flex items-center gap-3 text-xs text-gray-500">
+												{question.answer_count > 0 && (
+													<span>
+														{question.answer_count}{" "}
+														{question.answer_count === 1 ? "answer" : "answers"}
+													</span>
+												)}
+												{question.similarity_score && (
+													<span className="font-medium text-blue-600">
+														{Math.round(question.similarity_score * 100)}%
+														similar
+													</span>
+												)}
+											</div>
+										</div>
+									))}
+								</div>
+							</div>
+						)}
+
+						{loadingSimilarQuestions && (
+							<div className="bg-gray-50 border border-gray-200 p-4 rounded-lg">
+								<p className="text-sm text-gray-600 flex items-center gap-2">
+									<span className="animate-spin">⏳</span>
+									Searching for similar questions...
+								</p>
+							</div>
+						)}
+
 						<button
 							type="submit"
 							disabled={isSubmitting}
@@ -546,6 +861,94 @@ const AskQuestionPage = () => {
 							{isSubmitting ? "Posting..." : "Post Your Question"}
 						</button>
 					</form>
+
+					{/* Similar Questions Modal */}
+					{showSimilarQuestions && similarQuestions.length > 0 && (
+						<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+							<div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] overflow-y-auto">
+								<div className="p-6">
+									<div className="flex items-center justify-between mb-4">
+										<h3 className="text-2xl font-bold text-gray-900">
+											🔍 Similar Questions Found
+										</h3>
+										<button
+											onClick={() => {
+												setShowSimilarQuestions(false);
+												navigate("/");
+											}}
+											className="text-gray-400 hover:text-gray-600 text-2xl"
+										>
+											×
+										</button>
+									</div>
+									<p className="text-gray-600 mb-6">
+										We found some questions that might be similar to yours.
+										Check them out before posting:
+									</p>
+									<div className="space-y-4">
+										{similarQuestions.map((question) => (
+											<div
+												key={question.id}
+												onClick={() => {
+													const identifier = question.slug || question.id;
+													navigate(`/questions/${identifier}`);
+												}}
+												onKeyDown={(e) => {
+													if (e.key === "Enter" || e.key === " ") {
+														e.preventDefault();
+														const identifier = question.slug || question.id;
+														navigate(`/questions/${identifier}`);
+													}
+												}}
+												role="button"
+												tabIndex={0}
+												className="p-4 border-2 border-gray-200 rounded-lg hover:border-[#281d80] hover:shadow-md transition-all cursor-pointer"
+											>
+												<h4 className="font-semibold text-gray-900 mb-2 hover:text-[#281d80]">
+													{question.title}
+												</h4>
+												<div className="flex items-center gap-4 text-sm text-gray-500">
+													{question.answer_count > 0 && (
+														<span>{question.answer_count} answers</span>
+													)}
+													{question.similarity_score && (
+														<span className="font-medium">
+															{Math.round(question.similarity_score * 100)}%
+															similar
+														</span>
+													)}
+												</div>
+											</div>
+										))}
+									</div>
+									<div className="mt-6 flex gap-4">
+										<button
+											onClick={() => {
+												setShowSimilarQuestions(false);
+												navigate("/");
+											}}
+											className="flex-1 bg-[#281d80] text-white px-6 py-3 rounded-lg font-semibold hover:bg-[#1f1566] transition-colors cursor-pointer"
+										>
+											Continue Anyway
+										</button>
+										<button
+											onClick={() => {
+												setShowSimilarQuestions(false);
+												if (similarQuestions.length > 0) {
+													const identifier =
+														similarQuestions[0].slug || similarQuestions[0].id;
+													navigate(`/questions/${identifier}`);
+												}
+											}}
+											className="flex-1 bg-gray-200 text-gray-800 px-6 py-3 rounded-lg font-semibold hover:bg-gray-300 transition-colors cursor-pointer"
+										>
+											View First Question
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>

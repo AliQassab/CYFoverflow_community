@@ -117,9 +117,9 @@ export const filterQuestions = (questions, searchTerm) => {
 };
 
 /**
- * Highlights search terms in text
+ * Highlights search terms in text (supports multiple words)
  * @param {string} text - Text to highlight
- * @param {string} searchTerm - Search term to highlight
+ * @param {string} searchTerm - Search term to highlight (can be multiple words)
  * @returns {JSX.Element|string} - Text with highlighted search terms
  */
 export const highlightSearchTerm = (text, searchTerm) => {
@@ -128,16 +128,31 @@ export const highlightSearchTerm = (text, searchTerm) => {
 	}
 
 	const term = searchTerm.trim();
-	const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const regex = new RegExp(`(${escapedTerm})`, "gi");
+	// Split search term into individual words for better highlighting
+	const words = term.split(/\s+/).filter((w) => w.length > 0);
+
+	if (words.length === 0) {
+		return text;
+	}
+
+	// Create regex pattern that matches any of the search words
+	const escapedWords = words.map((w) =>
+		w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+	);
+	const pattern = `(${escapedWords.join("|")})`;
+	const regex = new RegExp(pattern, "gi");
 	const parts = text.split(regex);
 
 	const filteredParts = parts.filter((part) => part.length > 0);
 
 	return filteredParts.map((part, index) => {
-		if (part.toLowerCase() === term.toLowerCase()) {
+		// Check if this part matches any of the search words (case-insensitive)
+		const matches = words.some(
+			(word) => part.toLowerCase() === word.toLowerCase(),
+		);
+		if (matches) {
 			return (
-				<mark key={index} className="bg-yellow-200 px-1 rounded">
+				<mark key={index} className="bg-yellow-200 px-1 rounded font-medium">
 					{part}
 				</mark>
 			);

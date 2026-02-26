@@ -5,9 +5,17 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 
 import Answer from "../components/Answer";
 import AnswerForm from "../components/AnswerForm";
+import Comment from "../components/Comment";
+import CommentForm from "../components/CommentForm";
+import ConfirmDialog from "../components/ConfirmDialog";
 import LabelBadge from "../components/LabelBadge";
 import Sidebar from "../components/Sidebar";
+import SimilarQuestions from "../components/SimilarQuestions";
+import UserLink from "../components/UserLink";
+import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/useAuth";
+import { getCommentsByQuestionId } from "../services/api";
+import { getUserFriendlyError, isOnline } from "../utils/errorMessages";
 import { capitalizeTitle } from "../utils/questionUtils.jsx";
 
 function QuestionDetailPage() {
@@ -15,11 +23,17 @@ function QuestionDetailPage() {
 	const navigate = useNavigate();
 	const location = useLocation();
 	const { isLoggedIn, token, user } = useAuth();
+	const { showError: showToastError, showSuccess } = useToast();
 	const [question, setQuestion] = useState(null);
 	const [answers, setAnswers] = useState([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [showAnswerForm, setShowAnswerForm] = useState(false);
+	const [questionComments, setQuestionComments] = useState([]);
+	const [showQuestionCommentForm, setShowQuestionCommentForm] = useState(false);
+	const [loadingQuestionComments, setLoadingQuestionComments] = useState(false);
+	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+	const [isDeleting, setIsDeleting] = useState(false);
 	const editorRef = useRef(null);
 	const answerFormRef = useRef(null);
 
@@ -27,21 +41,31 @@ function QuestionDetailPage() {
 		try {
 			setLoading(true);
 			setError("");
+
+			if (!isOnline()) {
+				throw new Error("No internet connection");
+			}
+
 			const response = await fetch(`/api/questions/${identifier}`);
 
 			if (!response.ok) {
-				throw new Error("Failed to fetch question");
+				const errorData = await response.json().catch(() => ({}));
+				throw new Error(errorData.message || "Failed to fetch question");
 			}
 
 			const data = await response.json();
 			setQuestion(data);
 		} catch (err) {
-			console.error("Error fetching question:", err);
-			setError("Failed to load question. Please try again later.");
+			const friendlyError = getUserFriendlyError(
+				err,
+				"Failed to load question. Please try again later.",
+			);
+			setError(friendlyError);
+			showToastError(friendlyError);
 		} finally {
 			setLoading(false);
 		}
-	}, [identifier]);
+	}, [identifier, showToastError]);
 
 	const fetchAnswers = useCallback(async () => {
 		try {
@@ -54,11 +78,24 @@ function QuestionDetailPage() {
 
 			const data = await response.json();
 			setAnswers(data || []);
-		} catch (err) {
-			console.error("Error fetching answers:", err);
+		} catch {
 			setAnswers([]);
 		}
 	}, [question?.id, identifier]);
+
+	const fetchQuestionComments = useCallback(async () => {
+		if (!question?.id) return;
+		setLoadingQuestionComments(true);
+		try {
+			const comments = await getCommentsByQuestionId(question.id);
+			setQuestionComments(comments || []);
+		} catch {
+			// Silently fail - comments are non-critical
+			setQuestionComments([]);
+		} finally {
+			setLoadingQuestionComments(false);
+		}
+	}, [question?.id]);
 
 	useEffect(() => {
 		fetchQuestion();
@@ -67,14 +104,25 @@ function QuestionDetailPage() {
 	useEffect(() => {
 		if (question?.id) {
 			fetchAnswers();
+			fetchQuestionComments();
 		}
-	}, [question?.id, fetchAnswers]);
+	}, [question?.id, fetchAnswers, fetchQuestionComments]);
+
+	const isInitialLoad = useRef(true);
+	const previousQuestionId = useRef(null);
 
 	useEffect(() => {
-		if (location.hash && answers.length > 0 && !loading) {
-			const answerId = location.hash.replace("#", "");
-			if (answerId.startsWith("answer-")) {
-				const answerElement = document.getElementById(answerId);
+		if (question?.id !== previousQuestionId.current) {
+			isInitialLoad.current = true;
+			previousQuestionId.current = question?.id;
+		}
+
+		if (location.hash && !loading) {
+			const hashId = location.hash.replace("#", "");
+
+			// Handle answer hash
+			if (hashId.startsWith("answer-") && answers.length > 0) {
+				const answerElement = document.getElementById(hashId);
 				if (answerElement) {
 					setTimeout(() => {
 						answerElement.scrollIntoView({
@@ -82,23 +130,70 @@ function QuestionDetailPage() {
 							block: "start",
 						});
 					}, 100);
+					return;
 				}
 			}
-		} else if (!location.hash && !loading && question) {
-			window.scrollTo({ top: 0, behavior: "instant" });
-		}
-	}, [location.hash, answers, loading, question]);
 
-	// Auto-show answer form if user was redirected from login
+			// Handle comment hash - try to find comment element
+			// Comments can be on questions or answers, so we check periodically
+			if (hashId.startsWith("comment-")) {
+				const scrollToComment = () => {
+					const commentElement = document.getElementById(hashId);
+					if (commentElement) {
+						setTimeout(() => {
+							commentElement.scrollIntoView({
+								behavior: "smooth",
+								block: "start",
+							});
+						}, 100);
+						return true;
+					}
+					return false;
+				};
+
+				// Try immediately
+				if (scrollToComment()) {
+					return;
+				}
+
+				// If not found, wait a bit and retry (comments might still be loading)
+				// Retry up to 5 times with increasing delays
+				let retries = 0;
+				const maxRetries = 5;
+				const retryInterval = setInterval(() => {
+					retries++;
+					if (scrollToComment() || retries >= maxRetries) {
+						clearInterval(retryInterval);
+					}
+				}, 300);
+
+				// Cleanup interval on unmount or hash change
+				return () => clearInterval(retryInterval);
+			}
+		} else if (
+			!location.hash &&
+			!loading &&
+			question &&
+			isInitialLoad.current
+		) {
+			window.scrollTo({ top: 0, behavior: "instant" });
+			isInitialLoad.current = false;
+		}
+	}, [
+		location.hash,
+		answers.length,
+		questionComments.length,
+		loading,
+		question,
+	]);
+
 	useEffect(() => {
 		if (isLoggedIn && !loading && question) {
 			const searchParams = new URLSearchParams(location.search);
 			if (searchParams.get("answer") === "true") {
 				setShowAnswerForm(true);
-				// Remove the query parameter from URL without reloading
 				const newUrl = window.location.pathname + (location.hash || "");
 				window.history.replaceState({}, "", newUrl);
-				// Scroll to answer form after a short delay
 				setTimeout(() => {
 					answerFormRef.current?.scrollIntoView({
 						behavior: "smooth",
@@ -137,13 +232,47 @@ function QuestionDetailPage() {
 		fetchAnswers();
 	};
 
-	const handleAnswerDelete = () => {
-		fetchQuestion();
-		fetchAnswers();
+	const handleAnswerDelete = (deletedAnswerId) => {
+		// Optimistically remove the answer from the UI immediately
+		setAnswers((prevAnswers) => {
+			return prevAnswers.filter((a) => a.id !== deletedAnswerId);
+		});
+
+		// Mark that an answer was deleted so MyResponsesPage can refresh
+		// Use sessionStorage so it persists across navigation
+		const timestamp = Date.now().toString();
+		sessionStorage.setItem("answerDeleted", "true");
+		sessionStorage.setItem("answerDeletedTimestamp", timestamp);
+
+		// Dispatch custom events to trigger notification refresh
+		window.dispatchEvent(new CustomEvent("answerDeleted"));
+		window.dispatchEvent(new CustomEvent("notificationsChanged"));
+
+		// Then refresh from server to ensure consistency (with a small delay to let optimistic update render)
+		setTimeout(() => {
+			fetchQuestion();
+			fetchAnswers();
+		}, 100);
 	};
 
 	const handleAnswerCancel = () => {
 		setShowAnswerForm(false);
+	};
+
+	const handleQuestionCommentSuccess = async () => {
+		// Refresh question comments after adding a new one
+		await fetchQuestionComments();
+		setShowQuestionCommentForm(false);
+	};
+
+	const handleQuestionCommentUpdate = async () => {
+		// Refresh question comments after update
+		await fetchQuestionComments();
+	};
+
+	const handleQuestionCommentDelete = async () => {
+		// Refresh question comments after delete
+		await fetchQuestionComments();
 	};
 
 	const handleMarkSolved = async (isSolved) => {
@@ -167,28 +296,34 @@ function QuestionDetailPage() {
 
 			const updatedQuestion = await response.json();
 			setQuestion(updatedQuestion);
+			showSuccess(
+				isSolved ? "Question marked as solved" : "Question marked as unsolved",
+			);
 		} catch (err) {
-			console.error("Error marking question as solved:", err);
-			alert(err.message || "Failed to update solved status");
+			const friendlyError = getUserFriendlyError(
+				err,
+				"Failed to update solved status",
+			);
+			showToastError(friendlyError);
 		}
 	};
 
 	const isQuestionAuthor =
 		isLoggedIn && user && question && user.id === question.user_id;
 
-	const handleDelete = async () => {
-		if (
-			!window.confirm(
-				"Are you sure you want to delete this question? This action cannot be undone.",
-			)
-		) {
+	const handleDeleteClick = () => {
+		setShowDeleteConfirm(true);
+	};
+
+	const handleDeleteConfirm = async () => {
+		if (!isLoggedIn || !token) {
+			setError("You must be logged in to delete questions.");
+			setShowDeleteConfirm(false);
 			return;
 		}
 
-		if (!isLoggedIn || !token) {
-			setError("You must be logged in to delete questions.");
-			return;
-		}
+		setIsDeleting(true);
+		setError("");
 
 		try {
 			const questionId = question?.id || identifier;
@@ -204,11 +339,50 @@ function QuestionDetailPage() {
 				throw new Error(data.error || "Failed to delete question");
 			}
 
-			navigate("/");
+			// Dispatch custom event to trigger notification refresh
+			window.dispatchEvent(new CustomEvent("notificationsChanged"));
+
+			// Preserve page number when navigating back after deletion
+			if (location.state?.fromMyResponses) {
+				navigate("/my-responses");
+			} else if (location.state?.fromMyQuestions) {
+				navigate("/my-questions");
+			} else if (location.state?.returnPage) {
+				// Preserve page number when going back to home
+				const returnPage = location.state.returnPage;
+				const returnPath = location.state.returnPath || "/";
+				const returnSearch = location.state.returnSearch || "";
+
+				// Build URL with page parameter
+				const searchParams = new URLSearchParams(returnSearch);
+				if (returnPage > 1) {
+					searchParams.set("page", returnPage.toString());
+				}
+
+				const queryString = searchParams.toString();
+				const backUrl = queryString
+					? `${returnPath}?${queryString}`
+					: returnPath;
+				navigate(backUrl);
+			} else {
+				// No state - go to home page 1
+				navigate("/");
+			}
+			showSuccess("Question deleted successfully");
 		} catch (err) {
-			console.error("Error deleting question:", err);
-			setError(err.message || "Failed to delete question. Please try again.");
+			const friendlyError = getUserFriendlyError(
+				err,
+				"Failed to delete question. Please try again.",
+			);
+			setError(friendlyError);
+			showToastError(friendlyError);
+			setIsDeleting(false);
+			setShowDeleteConfirm(false);
 		}
+	};
+
+	const handleDeleteCancel = () => {
+		setShowDeleteConfirm(false);
 	};
 
 	const handleEdit = () => {
@@ -220,7 +394,7 @@ function QuestionDetailPage() {
 
 	if (loading) {
 		return (
-			<div className="min-h-screen bg-gray-50">
+			<div className="min-h-screen bg-[#efeef8]">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 					<div className="flex gap-8">
 						<Sidebar />
@@ -279,8 +453,30 @@ function QuestionDetailPage() {
 										navigate("/my-responses");
 									} else if (location.state?.fromMyQuestions) {
 										navigate("/my-questions");
+									} else if (location.state?.returnPage) {
+										// Preserve page number when going back to home
+										const returnPage = location.state.returnPage;
+										const returnPath = location.state.returnPath || "/";
+										const returnSearch = location.state.returnSearch || "";
+
+										// Build URL with page parameter
+										const searchParams = new URLSearchParams(returnSearch);
+										if (returnPage > 1) {
+											searchParams.set("page", returnPage.toString());
+										}
+
+										const queryString = searchParams.toString();
+										const backUrl = queryString
+											? `${returnPath}?${queryString}`
+											: returnPath;
+										navigate(backUrl);
 									} else {
-										navigate("/");
+										// No state (direct URL access) - use browser back or go to home
+										if (window.history.length > 1) {
+											navigate(-1);
+										} else {
+											navigate("/");
+										}
 									}
 								}}
 								className="flex items-center gap-2 text-sm sm:text-base text-gray-600 hover:text-[#281d80] transition-colors duration-200 cursor-pointer"
@@ -349,8 +545,9 @@ function QuestionDetailPage() {
 												<FaEdit className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5" />
 											</button>
 											<button
-												onClick={handleDelete}
-												className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-lg font-semibold transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer bg-red-600 text-white hover:bg-red-700"
+												onClick={handleDeleteClick}
+												disabled={isDeleting}
+												className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-lg font-semibold transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
 												title="Delete question"
 												aria-label="Delete question"
 											>
@@ -392,9 +589,11 @@ function QuestionDetailPage() {
 							<div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 md:gap-4 text-xs sm:text-sm text-gray-600 mb-4 md:mb-6 flex-wrap">
 								<span className="whitespace-nowrap">
 									Asked by{" "}
-									<span className="font-semibold">
-										{question.author_name || "Anonymous"}
-									</span>
+									<UserLink
+										userId={question.user_id}
+										userName={question.author_name}
+										className="font-semibold"
+									/>
 								</span>
 								<span className="hidden sm:inline">•</span>
 								<span className="break-words sm:whitespace-normal">
@@ -500,6 +699,55 @@ function QuestionDetailPage() {
 									</p>
 								</div>
 							)}
+
+							{/* Question Comments Section */}
+							<div className="mt-6 pt-4 border-t-2 border-gray-300">
+								<div className="flex items-center justify-between mb-4">
+									<h3 className="text-base font-bold text-gray-800">
+										💬 Comments ({questionComments.length})
+									</h3>
+									{isLoggedIn && !showQuestionCommentForm && (
+										<button
+											onClick={() => setShowQuestionCommentForm(true)}
+											className="px-3 py-1.5 text-sm font-semibold text-white bg-[#281d80] rounded-lg hover:bg-[#1f1566] transition-colors cursor-pointer shadow-sm hover:shadow-md"
+										>
+											+ Add Comment
+										</button>
+									)}
+								</div>
+
+								{/* Comments List */}
+								{loadingQuestionComments ? (
+									<div className="text-sm text-gray-500">
+										Loading comments...
+									</div>
+								) : questionComments.length > 0 ? (
+									<div className="space-y-2">
+										{questionComments.map((comment) => (
+											<Comment
+												key={comment.id}
+												comment={comment}
+												onUpdate={handleQuestionCommentUpdate}
+												onDelete={handleQuestionCommentDelete}
+											/>
+										))}
+									</div>
+								) : (
+									!showQuestionCommentForm && (
+										<p className="text-sm text-gray-500">No comments yet.</p>
+									)
+								)}
+
+								{/* Comment Form */}
+								{showQuestionCommentForm && (
+									<CommentForm
+										questionId={question.id}
+										token={token}
+										onSuccess={handleQuestionCommentSuccess}
+										onCancel={() => setShowQuestionCommentForm(false)}
+									/>
+								)}
+							</div>
 						</div>
 
 						{showAnswerForm && (
@@ -515,7 +763,7 @@ function QuestionDetailPage() {
 
 						<div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 md:p-6">
 							<h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3 md:mb-4">
-								Answers ({answers.length})
+								Answers ({question.answer_count ?? answers.length})
 							</h2>
 							{answers.length === 0 ? (
 								<p className="text-gray-600">
@@ -527,16 +775,44 @@ function QuestionDetailPage() {
 										<Answer
 											key={answer.id}
 											answer={answer}
+											questionAuthorId={question?.user_id}
 											onDelete={handleAnswerDelete}
 											onUpdate={fetchAnswers}
+											onAccept={() => {
+												fetchQuestion();
+												fetchAnswers();
+											}}
 										/>
 									))}
 								</div>
 							)}
 						</div>
+
+						{/* Similar Questions Section */}
+						{question?.id && (
+							<div className="mt-4 md:mt-6" id="similar-questions-wrapper">
+								<SimilarQuestions
+									key={question.id}
+									questionId={question.id}
+									limit={5}
+								/>
+							</div>
+						)}
 					</main>
 				</div>
 			</div>
+
+			{/* Delete Confirmation Dialog */}
+			<ConfirmDialog
+				isOpen={showDeleteConfirm}
+				title="Delete Question"
+				message="Are you sure you want to delete this question? This will also delete all associated answers. This action cannot be undone."
+				confirmText={isDeleting ? "Deleting..." : "Delete"}
+				cancelText="Cancel"
+				variant="danger"
+				onConfirm={handleDeleteConfirm}
+				onCancel={handleDeleteCancel}
+			/>
 		</div>
 	);
 }

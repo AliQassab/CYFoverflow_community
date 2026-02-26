@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
+import AdvancedSearchFilters from "../components/AdvancedSearchFilters";
 import LabelBadge from "../components/LabelBadge";
 import PaginationControls from "../components/PaginationControls";
 import Sidebar from "../components/Sidebar";
+import UserLink from "../components/UserLink";
 import { useLabelFilter } from "../contexts/LabelFilterContext";
 import { useSearch } from "../contexts/SearchContext";
 import { useAuth } from "../contexts/useAuth";
@@ -12,6 +14,7 @@ import {
 	highlightSearchTerm,
 	capitalizeTitle,
 } from "../utils/questionUtils.jsx";
+import { addToSearchHistory } from "../utils/searchHistory";
 
 const AskQuestionButton = ({
 	className = "",
@@ -36,6 +39,13 @@ function Home() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [pagination, setPagination] = useState(null);
+	const [labels, setLabels] = useState([]);
+	const [searchFilters, setSearchFilters] = useState({
+		solved: null,
+		sortBy: "relevance",
+		dateRange: null,
+		labelIds: [],
+	});
 
 	const searchParams = new URLSearchParams(location.search);
 	const currentPageFromUrl = parseInt(searchParams.get("page") || "1", 10);
@@ -58,6 +68,31 @@ function Home() {
 			}
 		}
 	}, [searchTerm, location.pathname, location.search, navigate]);
+
+	// Reset page to 1 when filters change (but only if we're on a later page)
+	useEffect(() => {
+		if (
+			searchTerm &&
+			searchTerm.trim() &&
+			currentPageFromUrl > 1 &&
+			(searchFilters.solved !== null ||
+				searchFilters.sortBy !== "relevance" ||
+				searchFilters.dateRange !== null ||
+				(searchFilters.labelIds && searchFilters.labelIds.length > 0))
+		) {
+			const newSearchParams = new URLSearchParams(location.search);
+			newSearchParams.delete("page");
+			navigate(`${location.pathname}?${newSearchParams.toString()}`, {
+				replace: true,
+			});
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [
+		searchFilters.solved,
+		searchFilters.sortBy,
+		searchFilters.dateRange,
+		searchFilters.labelIds?.length,
+	]);
 
 	useEffect(() => {
 		if (selectedLabel) {
@@ -113,8 +148,35 @@ function Home() {
 					setLoading(true);
 					setError("");
 				}
+
+				// Save to search history
+				if (searchTerm.trim()) {
+					addToSearchHistory(searchTerm.trim());
+				}
+
+				// Build query parameters
+				const params = new URLSearchParams({
+					q: searchTerm.trim(),
+					page: currentPageFromUrl.toString(),
+					limit: itemsPerPage.toString(),
+				});
+
+				// Add filters
+				if (searchFilters.solved !== null) {
+					params.append("solved", searchFilters.solved.toString());
+				}
+				if (searchFilters.sortBy && searchFilters.sortBy !== "relevance") {
+					params.append("sortBy", searchFilters.sortBy);
+				}
+				if (searchFilters.dateRange) {
+					params.append("dateRange", searchFilters.dateRange);
+				}
+				if (searchFilters.labelIds && searchFilters.labelIds.length > 0) {
+					params.append("labelIds", searchFilters.labelIds.join(","));
+				}
+
 				const response = await fetch(
-					`/api/questions/search?q=${encodeURIComponent(searchTerm.trim())}&page=${currentPageFromUrl}&limit=${itemsPerPage}`,
+					`/api/questions/search?${params.toString()}`,
 				);
 
 				if (!response.ok) {
@@ -141,7 +203,7 @@ function Home() {
 				}
 			}
 		},
-		[searchTerm, currentPageFromUrl, itemsPerPage],
+		[searchTerm, currentPageFromUrl, itemsPerPage, searchFilters],
 	);
 
 	const fetchLatestQuestions = useCallback(
@@ -182,6 +244,22 @@ function Home() {
 		[currentPageFromUrl, itemsPerPage],
 	);
 
+	// Fetch labels for filter component
+	useEffect(() => {
+		const fetchLabels = async () => {
+			try {
+				const response = await fetch("/api/questions/labels/all");
+				if (response.ok) {
+					const data = await response.json();
+					setLabels(data || []);
+				}
+			} catch {
+				// Silently fail - labels are optional for filters
+			}
+		};
+		fetchLabels();
+	}, []);
+
 	useEffect(() => {
 		if (selectedLabel) {
 			fetchQuestionsByLabel(selectedLabel.id);
@@ -193,6 +271,7 @@ function Home() {
 	}, [
 		selectedLabel,
 		searchTerm,
+		searchFilters,
 		fetchLatestQuestions,
 		fetchQuestionsByLabel,
 		fetchQuestionsBySearch,
@@ -296,7 +375,15 @@ function Home() {
 
 	const handleQuestionClick = (question) => {
 		const identifier = question.slug || question.id;
-		navigate(`/questions/${identifier}`);
+		// Preserve current page number when navigating to question detail
+		const currentPage = currentPageFromUrl;
+		navigate(`/questions/${identifier}`, {
+			state: {
+				returnPage: currentPage,
+				returnPath: location.pathname,
+				returnSearch: location.search,
+			},
+		});
 	};
 
 	return (
@@ -366,6 +453,15 @@ function Home() {
 										/>
 									)}
 								</div>
+								{searchTerm && searchTerm.trim() && (
+									<div className="mt-4">
+										<AdvancedSearchFilters
+											filters={searchFilters}
+											onFiltersChange={setSearchFilters}
+											labels={labels}
+										/>
+									</div>
+								)}
 							</div>
 
 							<div className="p-4 md:p-6">
@@ -476,9 +572,13 @@ function Home() {
 														<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-0 mt-2 sm:mt-3 text-xs sm:text-sm text-gray-500">
 															<span>
 																Asked by{" "}
-																{question.author_name ||
-																	question.author?.name ||
-																	"Anonymous"}
+																<UserLink
+																	userId={question.user_id}
+																	userName={
+																		question.author_name ||
+																		question.author?.name
+																	}
+																/>
 															</span>
 															<span>
 																{new Date(

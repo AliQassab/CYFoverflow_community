@@ -6,6 +6,7 @@ import express, { Router } from "express";
 import helmet from "helmet";
 import morgan from "morgan";
 
+import config from "./config.js";
 import logger from "./logger.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -18,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export const configuredCors = () => {
 	const corsOptions = {
 		// Set this to your frontend's exact origin
-		origin: "http://localhost:5173",
+		origin: config.frontendUrl,
 		// Allow credentials (like cookies or authorization headers)
 		credentials: true,
 		// Allow the necessary methods and headers for the preflight request
