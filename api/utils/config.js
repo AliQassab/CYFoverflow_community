@@ -24,6 +24,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * @property {string=} awsAccessKeyId
  * @property {string=} awsSecretAccessKey
  * @property {string} frontendUrl
+ * @property {string} storageType
+ * @property {string} uploadDir
+ * @property {string=} s3BaseUrl
  *
  * @typedef {import("node-pg-migrate/dist/runner.js").RunnerOption} RunnerOption
  * @typedef {import("node-pg-migrate/dist/runner.js").RunnerOptionUrl} RunnerOptionUrl
@@ -76,6 +79,9 @@ const createConfig = (overrides) => {
 		awsAccessKeyId: source.AWS_ACCESS_KEY_ID,
 		awsSecretAccessKey: source.AWS_SECRET_ACCESS_KEY,
 		frontendUrl: source.FRONTEND_URL || "http://localhost:5173",
+		storageType: source.STORAGE_TYPE || "local",
+		uploadDir: source.UPLOAD_DIR,
+		s3BaseUrl: source.S3_BASE_URL,
 	};
 };
 /** @type {Config} */
