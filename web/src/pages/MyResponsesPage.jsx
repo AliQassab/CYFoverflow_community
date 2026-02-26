@@ -126,7 +126,6 @@ function MyResponsesPage() {
 		if (isLoggedIn && token) {
 			fetchMyAnswers();
 		}
-		 
 	}, [isLoggedIn, token, location.pathname, location.key, fetchMyAnswers]);
 
 	const handlePageChange = (newPage) => {

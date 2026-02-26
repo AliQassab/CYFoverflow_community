@@ -5,7 +5,6 @@ import * as authRepository from "../auth/authRepository.js";
 import config from "./config.js";
 import logger from "./logger.js";
 
-
 /**
  * Generate access token (short-lived, 15 minutes)
  * @param {number} userId - User ID

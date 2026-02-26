@@ -11,7 +11,6 @@ import validate from "../utils/validation.js";
 
 import * as service from "./passwordResetService.js";
 
-
 const router = express.Router();
 
 // Validation schemas

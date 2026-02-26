@@ -59,7 +59,6 @@ export async function login(email, password, ipAddress = null) {
 
 	await accountLockout.clearFailedAttempts(normalizedEmail);
 
-	 
 	const { hashed_password: _, ...userWithoutPassword } = user;
 	return userWithoutPassword;
 }
