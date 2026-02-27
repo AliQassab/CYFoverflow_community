@@ -1,17 +1,19 @@
-import { useState } from "react";
-import { HiEye, HiEyeOff } from "react-icons/hi";
+import { useState, useRef } from "react";
+import { HiEye, HiEyeOff, HiCamera } from "react-icons/hi";
 import { Link, useNavigate } from "react-router-dom";
 
-import { useAuth } from "../contexts/useAuth";
+import { signUp as apiSignUp, updateUserProfile } from "../services/api";
 
 function SignUp() {
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [showPassword, setShowPassword] = useState(false);
+	const [avatarFile, setAvatarFile] = useState(null);
+	const [avatarPreview, setAvatarPreview] = useState(null);
 	const [error, setError] = useState("");
+	const fileInputRef = useRef(null);
 	const navigate = useNavigate();
-	const { signUp } = useAuth();
 
 	const validateName = (nameValue) => {
 		if (!nameValue || nameValue.trim().length < 2) {
@@ -53,6 +55,22 @@ function SignUp() {
 		return "";
 	};
 
+	const handleAvatarChange = (e) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+		if (!file.type.startsWith("image/")) {
+			setError("Please select an image file");
+			return;
+		}
+		if (file.size > 10 * 1024 * 1024) {
+			setError("Image size must be less than 10MB");
+			return;
+		}
+		setAvatarFile(file);
+		setAvatarPreview(URL.createObjectURL(file));
+		setError("");
+	};
+
 	const handleSubmit = async (e) => {
 		e.preventDefault();
 		setError("");
@@ -75,10 +93,42 @@ function SignUp() {
 		}
 
 		try {
-			await signUp(name.trim(), email.trim().toLowerCase(), password);
-			navigate("/");
-		} catch (error) {
-			const msg = error.message || "";
+			const response = await apiSignUp(
+				name.trim(),
+				email.trim().toLowerCase(),
+				password,
+			);
+
+			// If a photo was selected, upload it with the temporary token
+			if (avatarFile && response.accessToken && response.user?.id) {
+				try {
+					const formData = new FormData();
+					formData.append("file", avatarFile);
+
+					const uploadRes = await fetch("/api/upload", {
+						method: "POST",
+						headers: { Authorization: `Bearer ${response.accessToken}` },
+						body: formData,
+					});
+
+					if (uploadRes.ok) {
+						const uploadData = await uploadRes.json();
+						if (uploadData.success && uploadData.file?.file_url) {
+							await updateUserProfile(
+								response.user.id,
+								{ avatar_url: uploadData.file.file_url },
+								response.accessToken,
+							);
+						}
+					}
+				} catch {
+					// Photo upload failed — account still created, just no avatar
+				}
+			}
+
+			navigate("/login");
+		} catch (err) {
+			const msg = err.message || "";
 			setError(msg || "Sign up failed. Please try again.");
 		}
 	};
@@ -108,6 +158,43 @@ function SignUp() {
 								{error}
 							</div>
 						)}
+
+						{/* Avatar picker */}
+						<div className="flex flex-col items-center gap-2">
+							<button
+								type="button"
+								onClick={() => fileInputRef.current?.click()}
+								className="relative w-20 h-20 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 hover:border-[#281d80] transition-colors cursor-pointer overflow-hidden group"
+								aria-label="Upload profile photo"
+							>
+								{avatarPreview ? (
+									<img
+										src={avatarPreview}
+										alt="Preview"
+										className="w-full h-full object-cover"
+									/>
+								) : (
+									<div className="flex flex-col items-center justify-center h-full gap-1">
+										<HiCamera className="w-6 h-6 text-gray-400 group-hover:text-[#281d80]" />
+									</div>
+								)}
+								<div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+									<HiCamera className="w-6 h-6 text-white" />
+								</div>
+							</button>
+							<span className="text-xs text-gray-500">
+								{avatarPreview
+									? "Click to change photo"
+									: "Add profile photo (optional)"}
+							</span>
+							<input
+								ref={fileInputRef}
+								type="file"
+								accept="image/*"
+								onChange={handleAvatarChange}
+								className="hidden"
+							/>
+						</div>
 
 						<div className="space-y-5">
 							<div>

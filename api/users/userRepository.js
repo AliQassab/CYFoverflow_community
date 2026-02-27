@@ -9,19 +9,20 @@ import logger from "../utils/logger.js";
 export const getUserProfileByIdDB = async (userId) => {
 	try {
 		const result = await db.query(
-			`SELECT 
-				id, 
-				name, 
-				email, 
-				bio, 
-				avatar_url, 
-				is_active, 
+			`SELECT
+				id,
+				name,
+				email,
+				avatar_url,
+				public_email,
+				is_cyf_trainee,
+				is_active,
 				is_email_verified,
 				COALESCE(reputation, 0) as reputation,
-				created_at, 
-				updated_at, 
+				created_at,
+				updated_at,
 				last_login_at
-			FROM users 
+			FROM users
 			WHERE id = $1 AND deleted_at IS NULL`,
 			[userId],
 		);
@@ -89,20 +90,28 @@ export const getUserStatsDB = async (userId) => {
  * @param {string} [updates.avatar_url] - Avatar URL
  * @returns {Promise<Object>} Updated user profile
  */
-export const updateUserProfileDB = async (userId, { bio, avatar_url }) => {
+export const updateUserProfileDB = async (
+	userId,
+	{ avatar_url, public_email, is_cyf_trainee },
+) => {
 	try {
 		const updates = [];
 		const values = [];
 		let paramIndex = 1;
 
-		if (bio !== undefined) {
-			updates.push(`bio = $${paramIndex++}`);
-			values.push(bio);
-		}
-
 		if (avatar_url !== undefined) {
 			updates.push(`avatar_url = $${paramIndex++}`);
 			values.push(avatar_url);
+		}
+
+		if (public_email !== undefined) {
+			updates.push(`public_email = $${paramIndex++}`);
+			values.push(public_email);
+		}
+
+		if (is_cyf_trainee !== undefined) {
+			updates.push(`is_cyf_trainee = $${paramIndex++}`);
+			values.push(is_cyf_trainee);
 		}
 
 		if (updates.length === 0) {
@@ -113,10 +122,10 @@ export const updateUserProfileDB = async (userId, { bio, avatar_url }) => {
 		values.push(userId);
 
 		const result = await db.query(
-			`UPDATE users 
+			`UPDATE users
 			 SET ${updates.join(", ")}, updated_at = NOW()
 			 WHERE id = $${paramIndex} AND deleted_at IS NULL
-			 RETURNING id, name, email, bio, avatar_url, created_at, updated_at`,
+			 RETURNING id, name, email, avatar_url, public_email, is_cyf_trainee, created_at, updated_at`,
 			values,
 		);
 

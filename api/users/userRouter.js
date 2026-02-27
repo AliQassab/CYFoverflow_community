@@ -50,15 +50,19 @@ router.patch("/:id", authenticateToken(), async (req, res) => {
 				.json({ error: "Unauthorized: You can only update your own profile" });
 		}
 
-		const { bio, avatar_url } = req.body;
+		const { avatar_url, public_email, is_cyf_trainee } = req.body;
 		const updates = {};
-
-		if (bio !== undefined) {
-			updates.bio = bio;
-		}
 
 		if (avatar_url !== undefined) {
 			updates.avatar_url = avatar_url;
+		}
+
+		if (public_email !== undefined) {
+			updates.public_email = public_email;
+		}
+
+		if (is_cyf_trainee !== undefined) {
+			updates.is_cyf_trainee = is_cyf_trainee;
 		}
 
 		if (Object.keys(updates).length === 0) {

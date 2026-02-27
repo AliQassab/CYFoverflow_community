@@ -1,5 +1,6 @@
 import { Router } from "express";
 
+import adminRouter from "./admin/adminRouter.js";
 import answerRouter from "./answers/answerRouter.js";
 import authRouter from "./auth/authRouter.js";
 import commentRouter from "./comments/commentRouter.js";
@@ -20,6 +21,7 @@ api.use("/notifications", notificationRouter);
 api.use("/users", userRouter);
 api.use("/devices", deviceTokenRouter);
 api.use("/upload", uploadRouter);
+api.use("/admin", adminRouter);
 
 api.use("/auth", authRouter);
 

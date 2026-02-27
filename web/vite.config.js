@@ -8,8 +8,11 @@ export default defineConfig({
 		outDir: "../api/static",
 	},
 	server: {
+		port: parseInt(process.env.PORT ?? "5173"),
 		proxy: {
 			"/api": "http://localhost:3100",
+			"/healthz": "http://localhost:3100",
+			"/uploads": "http://localhost:3100",
 		},
 	},
 });

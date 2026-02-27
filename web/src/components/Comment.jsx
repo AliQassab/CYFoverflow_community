@@ -2,7 +2,11 @@ import { useState } from "react";
 import { FaEdit, FaTrash } from "react-icons/fa";
 
 import { useAuth } from "../contexts/useAuth";
-import { deleteComment, updateComment } from "../services/api";
+import {
+	deleteComment,
+	updateComment,
+	adminDeleteContent,
+} from "../services/api";
 
 import UserLink from "./UserLink";
 
@@ -15,6 +19,7 @@ function Comment({ comment, onUpdate, onDelete }) {
 	const [error, setError] = useState("");
 
 	const isAuthor = isLoggedIn && user && user.id === comment.user_id;
+	const isAdmin = user?.is_admin;
 
 	const handleDelete = async () => {
 		if (!window.confirm("Are you sure you want to delete this comment?")) {
@@ -25,7 +30,11 @@ function Comment({ comment, onUpdate, onDelete }) {
 		setError("");
 
 		try {
-			await deleteComment(comment.id, token);
+			if (isAdmin && !isAuthor) {
+				await adminDeleteContent(token, "comment", comment.id);
+			} else {
+				await deleteComment(comment.id, token);
+			}
 			if (onDelete) {
 				onDelete();
 			}
@@ -130,21 +139,27 @@ function Comment({ comment, onUpdate, onDelete }) {
 						{comment.content}
 					</p>
 				</div>
-				{isAuthor && (
+				{(isAuthor || isAdmin) && (
 					<div className="flex gap-1 shrink-0">
-						<button
-							onClick={() => setIsEditing(true)}
-							className="p-1.5 text-gray-600 hover:text-[#281d80] transition-colors"
-							title="Edit comment"
-							aria-label="Edit comment"
-						>
-							<FaEdit className="w-3.5 h-3.5" />
-						</button>
+						{isAuthor && (
+							<button
+								onClick={() => setIsEditing(true)}
+								className="p-1.5 text-gray-600 hover:text-[#281d80] transition-colors"
+								title="Edit comment"
+								aria-label="Edit comment"
+							>
+								<FaEdit className="w-3.5 h-3.5" />
+							</button>
+						)}
 						<button
 							onClick={handleDelete}
 							disabled={isDeleting}
 							className="p-1.5 text-gray-600 hover:text-red-600 transition-colors disabled:opacity-50"
-							title="Delete comment"
+							title={
+								isAdmin && !isAuthor
+									? "Admin: Delete comment"
+									: "Delete comment"
+							}
 							aria-label="Delete comment"
 						>
 							<FaTrash className="w-3.5 h-3.5" />

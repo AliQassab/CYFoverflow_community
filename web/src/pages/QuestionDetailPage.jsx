@@ -14,7 +14,7 @@ import SimilarQuestions from "../components/SimilarQuestions";
 import UserLink from "../components/UserLink";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/useAuth";
-import { getCommentsByQuestionId } from "../services/api";
+import { getCommentsByQuestionId, adminDeleteContent } from "../services/api";
 import { getUserFriendlyError, isOnline } from "../utils/errorMessages";
 import { capitalizeTitle } from "../utils/questionUtils.jsx";
 
@@ -311,6 +311,8 @@ function QuestionDetailPage() {
 	const isQuestionAuthor =
 		isLoggedIn && user && question && user.id === question.user_id;
 
+	const isAdmin = isLoggedIn && user?.is_admin;
+
 	const handleDeleteClick = () => {
 		setShowDeleteConfirm(true);
 	};
@@ -327,6 +329,22 @@ function QuestionDetailPage() {
 
 		try {
 			const questionId = question?.id || identifier;
+
+			// Admin deleting someone else's question uses admin endpoint
+			if (isAdmin && !isQuestionAuthor) {
+				await adminDeleteContent(token, "question", questionId);
+				window.dispatchEvent(new CustomEvent("notificationsChanged"));
+				showSuccess("Question deleted successfully");
+				navigate("/admin", {
+					state: {
+						restoreContentTab: location.state?.adminContentTab,
+						restoreContentPage: location.state?.adminContentPage,
+						restoreContentItemId: location.state?.adminContentItemId,
+					},
+				});
+				return;
+			}
+
 			const response = await fetch(`/api/questions/${questionId}`, {
 				method: "DELETE",
 				headers: {
@@ -343,7 +361,15 @@ function QuestionDetailPage() {
 			window.dispatchEvent(new CustomEvent("notificationsChanged"));
 
 			// Preserve page number when navigating back after deletion
-			if (location.state?.fromMyResponses) {
+			if (location.state?.fromAdmin) {
+				navigate("/admin", {
+					state: {
+						restoreContentTab: location.state?.adminContentTab,
+						restoreContentPage: location.state?.adminContentPage,
+						restoreContentItemId: location.state?.adminContentItemId,
+					},
+				});
+			} else if (location.state?.fromMyResponses) {
 				navigate("/my-responses");
 			} else if (location.state?.fromMyQuestions) {
 				navigate("/my-questions");
@@ -449,7 +475,16 @@ function QuestionDetailPage() {
 						<div className="mb-3 md:mb-4">
 							<button
 								onClick={() => {
-									if (location.state?.fromMyResponses) {
+									if (location.state?.fromAdmin) {
+										navigate("/admin", {
+											state: {
+												restoreContentTab: location.state?.adminContentTab,
+												restoreContentPage: location.state?.adminContentPage,
+												restoreContentItemId:
+													location.state?.adminContentItemId,
+											},
+										});
+									} else if (location.state?.fromMyResponses) {
 										navigate("/my-responses");
 									} else if (location.state?.fromMyQuestions) {
 										navigate("/my-questions");
@@ -483,11 +518,13 @@ function QuestionDetailPage() {
 							>
 								<FaArrowLeft className="w-4 h-4" />
 								<span className="font-medium">
-									{location.state?.fromMyResponses
-										? "Back to My Responses"
-										: location.state?.fromMyQuestions
-											? "Back to My Questions"
-											: "Back to Home"}
+									{location.state?.fromAdmin
+										? "Back to Admin Dashboard"
+										: location.state?.fromMyResponses
+											? "Back to My Responses"
+											: location.state?.fromMyQuestions
+												? "Back to My Questions"
+												: "Back to Home"}
 								</span>
 							</button>
 						</div>
@@ -574,6 +611,17 @@ function QuestionDetailPage() {
 												<FaCheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 md:w-5 md:h-5" />
 											</button>
 										</>
+									)}
+									{isAdmin && !isQuestionAuthor && (
+										<button
+											onClick={handleDeleteClick}
+											disabled={isDeleting}
+											className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 shadow-sm cursor-pointer bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+											title="Admin: Delete this question"
+										>
+											<FaTrash className="w-3 h-3" />
+											🛡️ Delete
+										</button>
 									)}
 									{!isQuestionAuthor && (
 										<button

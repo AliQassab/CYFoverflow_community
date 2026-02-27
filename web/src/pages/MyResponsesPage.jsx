@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 
 import PaginationControls from "../components/PaginationControls";
 import Sidebar from "../components/Sidebar";
+import UserLink from "../components/UserLink";
 import { useLabelFilter } from "../contexts/LabelFilterContext";
 import { useSearch } from "../contexts/SearchContext";
 import { useAuth } from "../contexts/useAuth";
@@ -411,9 +412,13 @@ function MyResponsesPage() {
 												<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-0 mt-2 text-xs md:text-sm text-gray-500">
 													<span>
 														Asked by{" "}
-														{answer.question.author_name ||
-															answer.question.author?.name ||
-															"Anonymous"}
+														<UserLink
+															userId={answer.question.user_id}
+															userName={
+																answer.question.author_name ||
+																answer.question.author?.name
+															}
+														/>
 													</span>
 													<span>
 														{new Date(

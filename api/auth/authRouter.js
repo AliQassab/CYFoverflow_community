@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import passwordResetRouter from "../passwordReset/passwordResetRouter.js";
 import * as refreshTokenService from "../refreshTokens/refreshTokenService.js";
+import { isAdminEmail } from "../utils/adminAuth.js";
 import { generateToken } from "../utils/auth.js";
 import logger from "../utils/logger.js";
 import { authLimiter } from "../utils/rateLimiter.js";
@@ -34,7 +35,7 @@ authRouter.post("/signup", validate(signupSchema), async (req, res) => {
 		);
 
 		res.status(201).json({
-			user: newUser,
+			user: { ...newUser, is_admin: isAdminEmail(newUser.email) },
 			accessToken,
 			refreshToken: refreshTokenData.token,
 			expiresAt: refreshTokenData.expiresAt.toISOString(),
@@ -65,7 +66,7 @@ authRouter.post("/login", validate(loginSchema), async (req, res) => {
 		);
 
 		res.status(200).json({
-			user,
+			user: { ...user, is_admin: isAdminEmail(user.email) },
 			accessToken,
 			refreshToken: refreshTokenData.token,
 			expiresAt: refreshTokenData.expiresAt.toISOString(),

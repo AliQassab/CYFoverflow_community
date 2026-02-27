@@ -8,9 +8,12 @@ import {
 	FaArrowUp,
 	FaCheckCircle,
 	FaTrophy,
+	FaEnvelope,
+	FaGraduationCap,
 } from "react-icons/fa";
 import { useParams, useNavigate } from "react-router-dom";
 
+import ImageUpload from "../components/ImageUpload";
 import Sidebar from "../components/Sidebar";
 import { useAuth } from "../contexts/useAuth";
 import { getUserProfile, updateUserProfile } from "../services/api";
@@ -22,13 +25,14 @@ import {
 function UserProfilePage() {
 	const { id } = useParams();
 	const navigate = useNavigate();
-	const { isLoggedIn, user: currentUser, token } = useAuth();
+	const { isLoggedIn, user: currentUser, token, updateUser } = useAuth();
 	const [profile, setProfile] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 	const [isEditing, setIsEditing] = useState(false);
-	const [editBio, setEditBio] = useState("");
 	const [editAvatarUrl, setEditAvatarUrl] = useState("");
+	const [editPublicEmail, setEditPublicEmail] = useState("");
+	const [editIsCyfTrainee, setEditIsCyfTrainee] = useState(false);
 	const [isUpdating, setIsUpdating] = useState(false);
 	const [updateError, setUpdateError] = useState("");
 
@@ -42,11 +46,11 @@ function UserProfilePage() {
 				setError("");
 				const data = await getUserProfile(id);
 				setProfile(data);
-				setEditBio(data.bio || "");
 				setEditAvatarUrl(data.avatar_url || "");
-			} catch (err) {
-				console.error("Error fetching user profile:", err);
-				setError(err.message || "Failed to load user profile");
+				setEditPublicEmail(data.public_email || "");
+				setEditIsCyfTrainee(data.is_cyf_trainee || false);
+			} catch (_err) {
+				setError(_err.message || "Failed to load user profile");
 			} finally {
 				setLoading(false);
 			}
@@ -70,25 +74,30 @@ function UserProfilePage() {
 			const updated = await updateUserProfile(
 				id,
 				{
-					bio: editBio.trim() || null,
 					avatar_url: editAvatarUrl.trim() || null,
+					public_email: editPublicEmail.trim() || null,
+					is_cyf_trainee: editIsCyfTrainee,
 				},
 				token,
 			);
 
 			setProfile({ ...profile, ...updated });
+			// Keep navbar avatar in sync
+			if (updated.avatar_url !== undefined) {
+				updateUser({ avatar_url: updated.avatar_url });
+			}
 			setIsEditing(false);
-		} catch (err) {
-			console.error("Error updating profile:", err);
-			setUpdateError(err.message || "Failed to update profile");
+		} catch (_err) {
+			setUpdateError(_err.message || "Failed to update profile");
 		} finally {
 			setIsUpdating(false);
 		}
 	};
 
 	const handleCancelEdit = () => {
-		setEditBio(profile?.bio || "");
 		setEditAvatarUrl(profile?.avatar_url || "");
+		setEditPublicEmail(profile?.public_email || "");
+		setEditIsCyfTrainee(profile?.is_cyf_trainee || false);
 		setIsEditing(false);
 		setUpdateError("");
 	};
@@ -137,7 +146,7 @@ function UserProfilePage() {
 						<div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 md:p-8 mb-6">
 							<div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 md:gap-6">
 								{/* Avatar */}
-								<div className="relative">
+								<div className="relative shrink-0">
 									{profile.avatar_url ? (
 										<img
 											src={profile.avatar_url}
@@ -180,50 +189,89 @@ function UserProfilePage() {
 										)}
 									</div>
 
-									{/* Bio */}
-									{isEditing ? (
+									{/* Badges (view mode) */}
+									{!isEditing && (
+										<div className="mt-3 flex flex-wrap gap-2">
+											{profile.is_cyf_trainee && (
+												<span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-[#281d80] text-white">
+													<FaGraduationCap className="w-3.5 h-3.5" />
+													CYF Trainee
+												</span>
+											)}
+											{profile.public_email && (
+												<a
+													href={`mailto:${profile.public_email}`}
+													className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+												>
+													<FaEnvelope className="w-3.5 h-3.5" />
+													{profile.public_email}
+												</a>
+											)}
+										</div>
+									)}
+
+									{/* Edit form */}
+									{isEditing && (
 										<div className="mt-4 space-y-4">
+											{/* Profile image upload */}
 											<div>
-												<label
-													htmlFor="bio-textarea"
-													className="block text-sm font-semibold text-gray-700 mb-2"
-												>
-													Bio
-												</label>
-												<textarea
-													id="bio-textarea"
-													value={editBio}
-													onChange={(e) => setEditBio(e.target.value)}
-													placeholder="Tell us about yourself..."
-													rows={4}
-													maxLength={500}
-													className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#281d80] focus:border-transparent resize-none"
-												/>
-												<p className="text-xs text-gray-500 mt-1">
-													{editBio.length}/500 characters
+												<p className="block text-sm font-semibold text-gray-700 mb-2">
+													Profile Photo
 												</p>
+												<ImageUpload
+													onUpload={(file) => setEditAvatarUrl(file.file_url)}
+													onRemove={() => setEditAvatarUrl("")}
+													existingImageUrl={editAvatarUrl}
+													token={token}
+												/>
 											</div>
+
+											{/* Public email */}
 											<div>
 												<label
-													htmlFor="avatar-url-input"
+													htmlFor="public-email-input"
 													className="block text-sm font-semibold text-gray-700 mb-2"
 												>
-													Avatar URL
+													Public Email{" "}
+													<span className="font-normal text-gray-500">
+														(optional)
+													</span>
 												</label>
 												<input
-													id="avatar-url-input"
-													type="url"
-													value={editAvatarUrl}
-													onChange={(e) => setEditAvatarUrl(e.target.value)}
-													placeholder="https://example.com/avatar.jpg"
+													id="public-email-input"
+													type="email"
+													value={editPublicEmail}
+													onChange={(e) => setEditPublicEmail(e.target.value)}
+													placeholder="your@email.com"
 													className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#281d80] focus:border-transparent"
 												/>
 											</div>
+
+											{/* CYF Trainee checkbox */}
+											<div className="flex items-center gap-3">
+												<input
+													id="cyf-trainee-checkbox"
+													type="checkbox"
+													checked={editIsCyfTrainee}
+													onChange={(e) =>
+														setEditIsCyfTrainee(e.target.checked)
+													}
+													className="w-5 h-5 rounded border-gray-300 text-[#281d80] accent-[#281d80] cursor-pointer"
+												/>
+												<label
+													htmlFor="cyf-trainee-checkbox"
+													className="text-sm font-semibold text-gray-700 cursor-pointer"
+												>
+													Am / Was a CYF Trainee
+												</label>
+											</div>
+
 											{updateError && (
 												<div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
 													{updateError}
 												</div>
 											)}
+
 											<div className="flex gap-2">
 												<button
 													onClick={handleUpdateProfile}
@@ -243,12 +291,6 @@ function UserProfilePage() {
 												</button>
 											</div>
 										</div>
-									) : (
-										profile.bio && (
-											<p className="mt-3 text-gray-700 whitespace-pre-wrap">
-												{profile.bio}
-											</p>
-										)
 									)}
 								</div>
 							</div>

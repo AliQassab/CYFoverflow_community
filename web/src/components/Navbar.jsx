@@ -62,12 +62,30 @@ function Navbar() {
 						{isLoggedIn ? (
 							<>
 								<NotificationBell />
+								{user?.is_admin && (
+									<Link
+										to="/admin"
+										className="text-sm font-semibold text-[#281d80] hover:text-[#1f1566] transition-colors px-3 py-1.5 rounded-lg hover:bg-purple-50"
+									>
+										Admin
+									</Link>
+								)}
 								<Link
 									to={`/users/${user?.id}`}
-									className="w-10 h-10 bg-[#281d80] text-white rounded-full flex items-center justify-center font-semibold hover:bg-[#1f1566] transition-colors cursor-pointer"
+									className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#281d80] hover:border-[#1f1566] transition-colors cursor-pointer shrink-0 flex items-center justify-center"
 									title="View Profile"
 								>
-									{userName?.charAt(0).toUpperCase()}
+									{user?.avatar_url ? (
+										<img
+											src={user.avatar_url}
+											alt={userName}
+											className="w-full h-full object-cover"
+										/>
+									) : (
+										<span className="w-full h-full bg-[#281d80] text-white flex items-center justify-center font-semibold text-sm">
+											{userName?.charAt(0).toUpperCase()}
+										</span>
+									)}
 								</Link>
 
 								<button
@@ -208,6 +226,20 @@ function Navbar() {
 											<span>💬</span>
 											<span>My Responses</span>
 										</Link>
+										{user?.is_admin && (
+											<Link
+												to="/admin"
+												onClick={() => setIsMenuOpen(false)}
+												className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-base font-medium cursor-pointer ${
+													location.pathname === "/admin"
+														? "bg-purple-50 text-purple-700"
+														: "text-gray-700 hover:bg-purple-50 hover:text-purple-700"
+												}`}
+											>
+												<span>🛡️</span>
+												<span>Admin</span>
+											</Link>
+										)}
 									</>
 								)}
 							</div>
@@ -217,10 +249,20 @@ function Navbar() {
 									<div className="px-4 py-2 flex items-center gap-3">
 										<Link
 											to={`/users/${user?.id}`}
-											className="w-10 h-10 bg-[#281d80] text-white rounded-full flex items-center justify-center font-semibold hover:bg-[#1f1566] transition-colors cursor-pointer"
+											className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#281d80] hover:border-[#1f1566] transition-colors cursor-pointer shrink-0 flex items-center justify-center"
 											title="View Profile"
 										>
-											{userName?.charAt(0).toUpperCase()}
+											{user?.avatar_url ? (
+												<img
+													src={user.avatar_url}
+													alt={userName}
+													className="w-full h-full object-cover"
+												/>
+											) : (
+												<span className="w-full h-full bg-[#281d80] text-white flex items-center justify-center font-semibold text-sm">
+													{userName?.charAt(0).toUpperCase()}
+												</span>
+											)}
 										</Link>
 									</div>
 

@@ -9,6 +9,7 @@ import {
 	getCommentsByAnswerId,
 	acceptAnswer,
 	deleteAnswer,
+	adminDeleteContent,
 } from "../services/api";
 import { getUserFriendlyError, isOnline } from "../utils/errorMessages";
 
@@ -40,6 +41,7 @@ function Answer({ answer, onDelete, onUpdate, questionAuthorId, onAccept }) {
 	const [isAccepting, setIsAccepting] = useState(false);
 
 	const isAuthor = isLoggedIn && user && user.id === answer.user_id;
+	const isAdmin = user?.is_admin;
 	const currentUserId = user?.id ? Number(user.id) : null;
 	const questionAuthorIdNum = questionAuthorId
 		? Number(questionAuthorId)
@@ -100,7 +102,11 @@ function Answer({ answer, onDelete, onUpdate, questionAuthorId, onAccept }) {
 		setShowDeleteConfirm(false);
 
 		try {
-			await deleteAnswer(answer.id, token);
+			if (isAdmin && !isAuthor) {
+				await adminDeleteContent(token, "answer", answer.id);
+			} else {
+				await deleteAnswer(answer.id, token);
+			}
 
 			// Call onDelete callback with answer ID for optimistic removal
 			if (onDelete) {
@@ -438,6 +444,17 @@ function Answer({ answer, onDelete, onUpdate, questionAuthorId, onAccept }) {
 										Delete
 									</button>
 								</>
+							)}
+
+							{/* Admin Controls — visible when admin is not the answer author */}
+							{isAdmin && !isAuthor && !isDeleting && (
+								<button
+									onClick={handleDeleteClick}
+									className="px-2 sm:px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors cursor-pointer whitespace-nowrap"
+									title="Admin: Delete answer"
+								>
+									🛡️ Delete
+								</button>
 							)}
 
 							{/* Show deleting indicator when deletion is in progress */}

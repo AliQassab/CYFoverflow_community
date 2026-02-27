@@ -84,6 +84,10 @@ const createConfig = (overrides) => {
 		storageType: source.STORAGE_TYPE || "local",
 		uploadDir: source.UPLOAD_DIR,
 		s3BaseUrl: source.S3_BASE_URL,
+		adminEmails: (source.ADMIN_EMAILS || "")
+			.split(",")
+			.map((e) => e.trim().toLowerCase())
+			.filter(Boolean),
 	};
 };
 /** @type {Config} */

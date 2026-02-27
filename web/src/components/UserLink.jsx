@@ -21,6 +21,7 @@ function UserLink({ userId, userName, className = "", showAnonymous = true }) {
 		<Link
 			to={`/users/${userId}`}
 			className={`hover:text-[#281d80] hover:underline transition-colors ${className}`}
+			onClick={(e) => e.stopPropagation()}
 		>
 			{userName || (showAnonymous ? "Anonymous" : "")}
 		</Link>

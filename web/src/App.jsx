@@ -8,6 +8,7 @@ import { LabelFilterProvider } from "./contexts/LabelFilterContext";
 import { NotificationProvider } from "./contexts/NotificationContext";
 import { SearchProvider } from "./contexts/SearchContext";
 import { ToastProvider } from "./contexts/ToastContext";
+import AdminPage from "./pages/AdminPage.jsx";
 import EditQuestion from "./pages/EditQuestion.jsx";
 import ForgotPassword from "./pages/ForgotPassword";
 import Home from "./pages/Home";
@@ -77,6 +78,7 @@ function App() {
 															path="/questions/:id/edit"
 															element={<EditQuestion />}
 														/>
+														<Route path="/admin" element={<AdminPage />} />
 													</Routes>
 												</div>
 											</Router>

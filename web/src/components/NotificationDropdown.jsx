@@ -118,7 +118,10 @@ function NotificationDropdown({ onClose }) {
 	const hasUnread = unreadNotifications.length > 0;
 
 	return (
-		<div className="absolute right-0 mt-2 w-80 md:w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-[500px] flex flex-col">
+		<div
+			className="fixed md:absolute inset-x-3 md:inset-x-auto top-16 md:top-auto md:right-0 md:mt-2 bg-white rounded-lg shadow-lg border border-gray-200 z-50 flex flex-col md:w-96"
+			style={{ maxHeight: "min(500px, calc(100dvh - 80px))" }}
+		>
 			{/* Header */}
 			<div className="flex items-center justify-between p-4 border-b border-gray-200">
 				<h3 className="text-lg font-semibold text-gray-900">Notifications</h3>

@@ -70,16 +70,26 @@ export const getUserProfile = async (userId, requestingUserId = null) => {
  */
 export const updateUserProfile = async (userId, updates) => {
 	try {
-		// Validate updates
-		if (updates.bio !== undefined && typeof updates.bio !== "string") {
-			throw new Error("Bio must be a string");
-		}
-
 		if (
 			updates.avatar_url !== undefined &&
 			typeof updates.avatar_url !== "string"
 		) {
 			throw new Error("Avatar URL must be a string");
+		}
+
+		if (
+			updates.public_email !== undefined &&
+			updates.public_email !== null &&
+			typeof updates.public_email !== "string"
+		) {
+			throw new Error("Public email must be a string");
+		}
+
+		if (
+			updates.is_cyf_trainee !== undefined &&
+			typeof updates.is_cyf_trainee !== "boolean"
+		) {
+			throw new Error("is_cyf_trainee must be a boolean");
 		}
 
 		const updatedProfile = await repository.updateUserProfileDB(

@@ -553,8 +553,9 @@ export const getUserProfile = async (userId) => {
  * Update user profile
  * @param {number|string} userId - User ID
  * @param {Object} updates - Fields to update
- * @param {string} [updates.bio] - User bio
  * @param {string} [updates.avatar_url] - Avatar URL
+ * @param {string} [updates.public_email] - Publicly visible email
+ * @param {boolean} [updates.is_cyf_trainee] - Whether user is/was a CYF trainee
  * @param {string} token - Auth token
  * @returns {Promise<Object>} Updated user profile
  */
@@ -700,5 +701,74 @@ export const resetPassword = async (token, password) => {
 		);
 	}
 
+	return response.json();
+};
+
+// ─── Admin API ────────────────────────────────────────────────────────────────
+
+export const getAdminStats = async (token) => {
+	const response = await fetch(`${API_BASE_URL}/admin/stats`, {
+		headers: { Authorization: `Bearer ${token}` },
+	});
+	if (!response.ok) throw new Error("Failed to fetch admin stats");
+	return response.json();
+};
+
+export const getAdminUsers = async (
+	token,
+	{ page = 1, limit = 20, search = "" } = {},
+) => {
+	const params = new URLSearchParams({
+		page,
+		limit,
+		...(search && { search }),
+	});
+	const response = await fetch(`${API_BASE_URL}/admin/users?${params}`, {
+		headers: { Authorization: `Bearer ${token}` },
+	});
+	if (!response.ok) throw new Error("Failed to fetch users");
+	return response.json();
+};
+
+export const adminSetUserActive = async (token, userId, isActive) => {
+	const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/block`, {
+		method: "PATCH",
+		headers: {
+			"Content-Type": "application/json",
+			Authorization: `Bearer ${token}`,
+		},
+		body: JSON.stringify({ is_active: isActive }),
+	});
+	if (!response.ok) throw new Error("Failed to update user");
+	return response.json();
+};
+
+export const adminDeleteUser = async (token, userId) => {
+	const response = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+		method: "DELETE",
+		headers: { Authorization: `Bearer ${token}` },
+	});
+	if (!response.ok) throw new Error("Failed to delete user");
+	return response.json();
+};
+
+export const getAdminContent = async (
+	token,
+	{ type, page = 1, limit = 20 } = {},
+) => {
+	const params = new URLSearchParams({ type, page, limit });
+	const response = await fetch(`${API_BASE_URL}/admin/content?${params}`, {
+		headers: { Authorization: `Bearer ${token}` },
+	});
+	if (!response.ok) throw new Error("Failed to fetch content");
+	return response.json();
+};
+
+export const adminDeleteContent = async (token, type, id) => {
+	const response = await fetch(`${API_BASE_URL}/admin/content/${type}/${id}`, {
+		method: "DELETE",
+		headers: { Authorization: `Bearer ${token}` },
+	});
+	if (!response.ok) throw new Error("Failed to delete content");
 	return response.json();
 };
