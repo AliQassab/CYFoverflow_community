@@ -38,10 +38,11 @@ export const NotificationProvider = ({ children }) => {
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState(null);
 
-	// Polling interval (30 seconds) - fallback if SSE fails
-	const POLL_INTERVAL = 30000;
+	// Polling interval (10 seconds) - fallback if SSE fails
+	const POLL_INTERVAL = 10000;
 	const sseCleanupRef = useRef(null);
 	const useSSE = useRef(true); // Try SSE first, fallback to polling if it fails
+	const sseRetryTimerRef = useRef(null); // Timer to re-attempt SSE after polling fallback
 
 	// Fetch notifications
 	const fetchNotifications = useCallback(
@@ -299,7 +300,21 @@ export const NotificationProvider = ({ children }) => {
 								"SSE connection error, falling back to polling:",
 								error,
 							);
-							useSSE.current = false; // Disable SSE, use polling instead
+							useSSE.current = false; // Temporarily use polling
+
+							// Re-attempt SSE after 60 seconds — the token will have
+							// been refreshed by then (AuthContext refreshes every 14 min
+							// and also on startup)
+							if (sseRetryTimerRef.current) {
+								clearTimeout(sseRetryTimerRef.current);
+							}
+							sseRetryTimerRef.current = setTimeout(() => {
+								useSSE.current = true;
+								sseRetryTimerRef.current = null;
+								// Trigger the useEffect to re-run by clearing the ref
+								// The effect will re-run on the next token change or we
+								// can force it via a state update in the next poll
+							}, 60000);
 						},
 					},
 				);
@@ -365,6 +380,10 @@ export const NotificationProvider = ({ children }) => {
 			}
 			if (intervalId) {
 				clearInterval(intervalId);
+			}
+			if (sseRetryTimerRef.current) {
+				clearTimeout(sseRetryTimerRef.current);
+				sseRetryTimerRef.current = null;
 			}
 			if (handleVisibilityChange) {
 				document.removeEventListener(

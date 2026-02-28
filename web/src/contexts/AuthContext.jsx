@@ -85,6 +85,18 @@ export function AuthProvider({ children }) {
 		return promise;
 	}, [refreshToken, isRefreshing, user, logout]);
 
+	// Refresh token immediately on startup — the stored access token may have
+	// expired while the app was closed (e.g. after Render's free-tier sleep).
+	// Running once on mount guarantees a fresh token before the SSE connection
+	// and push registration are established.
+	useEffect(() => {
+		if (isLoggedIn && refreshToken) {
+			refreshTokenFn();
+		}
+		// Only run on mount — intentionally no deps
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
 	// Auto-refresh token before expiration (every 14 minutes)
 	useEffect(() => {
 		if (!refreshToken || !isLoggedIn) {

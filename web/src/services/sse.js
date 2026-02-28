@@ -38,8 +38,8 @@ export const createNotificationSSE = (tokenOrGetter, callbacks = {}) => {
 	let eventSource = null;
 	let reconnectTimeout = null;
 	let reconnectAttempts = 0;
-	const MAX_RECONNECT_ATTEMPTS = 5;
-	const RECONNECT_DELAY = 3000; // 3 seconds
+	const MAX_RECONNECT_ATTEMPTS = 3;
+	const RECONNECT_DELAY = 2000; // 2 seconds
 
 	const connect = () => {
 		try {
@@ -125,19 +125,9 @@ export const createNotificationSSE = (tokenOrGetter, callbacks = {}) => {
 					// Connection closed - attempt to reconnect with fresh token
 					if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
 						reconnectAttempts++;
-						// Wait a bit longer for token refresh on authentication errors
-						const delay =
-							reconnectAttempts === 1
-								? RECONNECT_DELAY * 2
-								: RECONNECT_DELAY * reconnectAttempts;
-						reconnectTimeout = setTimeout(() => {
-							console.log(
-								`Reconnecting SSE with fresh token (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`,
-							);
-							connect();
-						}, delay); // Exponential backoff
+						const delay = RECONNECT_DELAY * reconnectAttempts; // 2s, 4s, 6s
+						reconnectTimeout = setTimeout(connect, delay);
 					} else {
-						console.error("Max SSE reconnection attempts reached");
 						if (onError) {
 							onError(
 								new Error("SSE connection failed after multiple attempts"),
