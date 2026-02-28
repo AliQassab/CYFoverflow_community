@@ -14,7 +14,12 @@ import SimilarQuestions from "../components/SimilarQuestions";
 import UserLink from "../components/UserLink";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/useAuth";
-import { getCommentsByQuestionId, adminDeleteContent } from "../services/api";
+import {
+	getCommentsByQuestionId,
+	adminDeleteContent,
+	getAdminQuestion,
+	getAdminAnswers,
+} from "../services/api";
 import { getUserFriendlyError, isOnline } from "../utils/errorMessages";
 import { capitalizeTitle } from "../utils/questionUtils.jsx";
 
@@ -34,8 +39,11 @@ function QuestionDetailPage() {
 	const [loadingQuestionComments, setLoadingQuestionComments] = useState(false);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const [isDeleting, setIsDeleting] = useState(false);
+	const [isDeletedQuestion, setIsDeletedQuestion] = useState(false);
 	const editorRef = useRef(null);
 	const answerFormRef = useRef(null);
+
+	const fromAdmin = location.state?.fromAdmin;
 
 	const fetchQuestion = useCallback(async () => {
 		try {
@@ -46,15 +54,23 @@ function QuestionDetailPage() {
 				throw new Error("No internet connection");
 			}
 
-			const response = await fetch(`/api/questions/${identifier}`);
+			let data;
 
-			if (!response.ok) {
-				const errorData = await response.json().catch(() => ({}));
-				throw new Error(errorData.message || "Failed to fetch question");
+			if (fromAdmin && token) {
+				// When coming from admin, use the admin endpoint so deleted questions
+				// are still visible instead of returning a 404.
+				data = await getAdminQuestion(token, identifier);
+			} else {
+				const response = await fetch(`/api/questions/${identifier}`);
+				if (!response.ok) {
+					const errorData = await response.json().catch(() => ({}));
+					throw new Error(errorData.message || "Failed to fetch question");
+				}
+				data = await response.json();
 			}
 
-			const data = await response.json();
 			setQuestion(data);
+			setIsDeletedQuestion(!!data.deleted_at);
 		} catch (err) {
 			const friendlyError = getUserFriendlyError(
 				err,
@@ -65,23 +81,27 @@ function QuestionDetailPage() {
 		} finally {
 			setLoading(false);
 		}
-	}, [identifier, showToastError]);
+	}, [identifier, fromAdmin, token, showToastError]);
 
 	const fetchAnswers = useCallback(async () => {
 		try {
 			const questionId = question?.id || identifier;
-			const response = await fetch(`/api/answers/${questionId}`);
+			let data;
 
-			if (!response.ok) {
-				throw new Error("Failed to fetch answers");
+			if (fromAdmin && token) {
+				// Admin endpoint returns all answers including soft-deleted ones
+				data = await getAdminAnswers(token, questionId);
+			} else {
+				const response = await fetch(`/api/answers/${questionId}`);
+				if (!response.ok) throw new Error("Failed to fetch answers");
+				data = await response.json();
 			}
 
-			const data = await response.json();
 			setAnswers(data || []);
 		} catch {
 			setAnswers([]);
 		}
-	}, [question?.id, identifier]);
+	}, [question?.id, identifier, fromAdmin, token]);
 
 	const fetchQuestionComments = useCallback(async () => {
 		if (!question?.id) return;
@@ -439,6 +459,20 @@ function QuestionDetailPage() {
 	}
 
 	if (error || !question) {
+		const handleErrorBack = () => {
+			if (fromAdmin) {
+				navigate("/admin", {
+					state: {
+						restoreContentTab: location.state?.adminContentTab,
+						restoreContentPage: location.state?.adminContentPage,
+						restoreContentItemId: location.state?.adminContentItemId,
+					},
+				});
+			} else {
+				navigate("/");
+			}
+		};
+
 		return (
 			<div className="min-h-screen bg-gray-50">
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -447,14 +481,19 @@ function QuestionDetailPage() {
 						<main className="flex-1">
 							<div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
 								<div className="text-center py-8">
-									<p className="text-red-600 mb-4">
-										{error || "Question not found"}
+									<p className="text-red-600 mb-2">
+										{fromAdmin
+											? "This question has already been deleted by another moderator."
+											: error || "Question not found"}
 									</p>
+									{error && fromAdmin && (
+										<p className="text-gray-500 text-sm mb-4">{error}</p>
+									)}
 									<button
-										onClick={() => navigate("/")}
+										onClick={handleErrorBack}
 										className="bg-[#281d80] text-white px-6 py-2 rounded-lg font-semibold hover:bg-[#1f1566] transition-all duration-200 cursor-pointer"
 									>
-										Go Back Home
+										{fromAdmin ? "Back to Admin Dashboard" : "Go Back Home"}
 									</button>
 								</div>
 							</div>
@@ -528,6 +567,21 @@ function QuestionDetailPage() {
 								</span>
 							</button>
 						</div>
+						{isDeletedQuestion && (
+							<div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-lg bg-red-50 border border-red-300 text-red-700">
+								<FaTrash className="w-4 h-4 shrink-0" />
+								<div>
+									<span className="font-semibold">
+										This question has been deleted.
+									</span>
+									<span className="ml-2 text-sm text-red-600">
+										You are viewing it as an admin. It is no longer visible to
+										regular users.
+									</span>
+								</div>
+							</div>
+						)}
+
 						<div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 md:p-6 mb-4 md:mb-6">
 							<div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4 mb-3 md:mb-4">
 								<div className="flex-1 min-w-0">
@@ -571,7 +625,7 @@ function QuestionDetailPage() {
 									</div>
 								</div>
 								<div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap">
-									{isQuestionAuthor && (
+									{!isDeletedQuestion && isQuestionAuthor && (
 										<>
 											<button
 												onClick={handleEdit}
@@ -612,7 +666,7 @@ function QuestionDetailPage() {
 											</button>
 										</>
 									)}
-									{isAdmin && !isQuestionAuthor && (
+									{!isDeletedQuestion && isAdmin && !isQuestionAuthor && (
 										<button
 											onClick={handleDeleteClick}
 											disabled={isDeleting}
@@ -623,7 +677,7 @@ function QuestionDetailPage() {
 											🛡️ Delete
 										</button>
 									)}
-									{!isQuestionAuthor && (
+									{!isDeletedQuestion && !isQuestionAuthor && (
 										<button
 											onClick={handleAnswerClick}
 											className="bg-[#281d80] text-white px-3 sm:px-4 md:px-6 py-1.5 sm:py-2 md:py-2.5 rounded-lg text-xs sm:text-sm md:text-base font-semibold hover:bg-[#1f1566] transition-all duration-200 shadow-md hover:shadow-lg cursor-pointer whitespace-nowrap"

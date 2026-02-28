@@ -1,5 +1,7 @@
 import { Router } from "express";
 
+import { getAnswersWithDeletedByQuestionIdDB } from "../answers/answerRepository.js";
+import { getDeletedQuestionByIdDB } from "../questions/questionRepository.js";
 import { requireAdmin } from "../utils/adminAuth.js";
 import { authenticateToken } from "../utils/auth.js";
 import logger from "../utils/logger.js";
@@ -96,6 +98,34 @@ adminRouter.delete("/users/:id", async (req, res) => {
 		logger.error("Delete user error: %O", error);
 		const status = error.message === "User not found" ? 404 : 500;
 		res.status(status).json({ error: error.message });
+	}
+});
+
+// GET /api/admin/questions/:id — view any question including soft-deleted ones
+adminRouter.get("/questions/:id", async (req, res) => {
+	try {
+		const question = await getDeletedQuestionByIdDB(req.params.id);
+		if (!question) {
+			return res.status(404).json({ error: "Question not found" });
+		}
+		res.json(question);
+	} catch (error) {
+		logger.error("Admin get question error: %O", error);
+		res.status(500).json({ error: "Failed to fetch question" });
+	}
+});
+
+// GET /api/admin/questions/:questionId/answers — includes soft-deleted answers
+adminRouter.get("/questions/:questionId/answers", async (req, res) => {
+	try {
+		const questionId = parseInt(req.params.questionId, 10);
+		if (isNaN(questionId))
+			return res.status(400).json({ error: "Invalid question ID" });
+		const answers = await getAnswersWithDeletedByQuestionIdDB(questionId);
+		res.json(answers);
+	} catch (error) {
+		logger.error("Admin get answers error: %O", error);
+		res.status(500).json({ error: "Failed to fetch answers" });
 	}
 });
 

@@ -57,6 +57,34 @@ export const getAnswerByQuestionIdDB = async (questionId, userId = null) => {
 	return result.rows;
 };
 
+/**
+ * Get all answers for a question including soft-deleted ones (admin use only)
+ */
+export const getAnswersWithDeletedByQuestionIdDB = async (questionId) => {
+	const result = await db.query(
+		`SELECT
+			a.id,
+			a.content,
+			a.user_id,
+			a.question_id,
+			a.created_at,
+			a.updated_at,
+			a.deleted_at,
+			a.is_accepted,
+			u.name AS author_name,
+			COALESCE(SUM(CASE WHEN v.vote_type = 'upvote' THEN 1 ELSE 0 END), 0)::int AS upvote_count,
+			COALESCE(SUM(CASE WHEN v.vote_type = 'downvote' THEN 1 ELSE 0 END), 0)::int AS downvote_count
+        FROM answers a
+        JOIN users u ON a.user_id = u.id
+        LEFT JOIN votes v ON a.id = v.answer_id
+        WHERE a.question_id = $1
+        GROUP BY a.id, a.content, a.user_id, a.question_id, a.created_at, a.updated_at, a.deleted_at, a.is_accepted, u.name
+        ORDER BY a.is_accepted DESC, a.created_at ASC`,
+		[questionId],
+	);
+	return result.rows;
+};
+
 export const updateAnswerDB = async (id, content) => {
 	const result = await db.query(
 		`UPDATE answers
@@ -70,20 +98,48 @@ export const updateAnswerDB = async (id, content) => {
 };
 
 /**
- * Soft delete an answer (sets deleted_at timestamp)
+ * Soft delete an answer (sets deleted_at timestamp).
+ * If the answer was accepted, also resets the question's solved status.
  * @param {number} id - Answer ID
  * @returns {Promise<boolean>} True if deleted
  */
 export const deleteAnswerDB = async (id) => {
-	const result = await db.query(
-		`UPDATE answers 
-		 SET deleted_at = NOW() 
-		 WHERE id = $1 AND deleted_at IS NULL
-		 RETURNING id`,
-		[id],
-	);
+	const client = await getClient();
+	try {
+		await client.query("BEGIN");
 
-	return result.rows.length > 0;
+		const result = await client.query(
+			`UPDATE answers
+			 SET deleted_at = NOW()
+			 WHERE id = $1 AND deleted_at IS NULL
+			 RETURNING id, is_accepted, question_id`,
+			[id],
+		);
+
+		if (result.rows.length === 0) {
+			await client.query("ROLLBACK");
+			return false;
+		}
+
+		const { is_accepted, question_id } = result.rows[0];
+
+		if (is_accepted) {
+			await client.query(
+				`UPDATE questions
+				 SET is_solved = false, status = 'open', updated_at = NOW()
+				 WHERE id = $1`,
+				[question_id],
+			);
+		}
+
+		await client.query("COMMIT");
+		return true;
+	} catch (error) {
+		await client.query("ROLLBACK");
+		throw error;
+	} finally {
+		client.release();
+	}
 };
 
 export const getAnswerByIdDB = async (id) => {

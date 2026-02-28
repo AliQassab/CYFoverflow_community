@@ -764,6 +764,23 @@ export const getAdminContent = async (
 	return response.json();
 };
 
+export const getAdminAnswers = async (token, questionId) => {
+	const response = await fetch(
+		`${API_BASE_URL}/admin/questions/${questionId}/answers`,
+		{ headers: { Authorization: `Bearer ${token}` } },
+	);
+	if (!response.ok) throw new Error("Failed to fetch answers");
+	return response.json();
+};
+
+export const getAdminQuestion = async (token, id) => {
+	const response = await fetch(`${API_BASE_URL}/admin/questions/${id}`, {
+		headers: { Authorization: `Bearer ${token}` },
+	});
+	if (!response.ok) throw new Error("Failed to fetch question");
+	return response.json();
+};
+
 export const adminDeleteContent = async (token, type, id) => {
 	const response = await fetch(`${API_BASE_URL}/admin/content/${type}/${id}`, {
 		method: "DELETE",

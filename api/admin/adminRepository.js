@@ -1,4 +1,4 @@
-import db from "../db.js";
+import db, { getClient } from "../db.js";
 import logger from "../utils/logger.js";
 
 export const getStatsDB = async () => {
@@ -177,6 +177,48 @@ export const deleteContentDB = async (type, id) => {
 	};
 	const table = tableMap[type];
 	if (!table) throw new Error("Invalid content type");
+
+	// Answers need special handling: if the deleted answer was accepted,
+	// reset the question's solved status.
+	if (type === "answer") {
+		const client = await getClient();
+		try {
+			await client.query("BEGIN");
+
+			const result = await client.query(
+				`UPDATE answers
+				 SET deleted_at = NOW()
+				 WHERE id = $1 AND deleted_at IS NULL
+				 RETURNING id, is_accepted, question_id`,
+				[id],
+			);
+
+			if (result.rows.length === 0) {
+				await client.query("ROLLBACK");
+				return null;
+			}
+
+			const { is_accepted, question_id } = result.rows[0];
+
+			if (is_accepted) {
+				await client.query(
+					`UPDATE questions
+					 SET is_solved = false, status = 'open', updated_at = NOW()
+					 WHERE id = $1`,
+					[question_id],
+				);
+			}
+
+			await client.query("COMMIT");
+			return result.rows[0];
+		} catch (error) {
+			await client.query("ROLLBACK");
+			logger.error("Error deleting answer:", error);
+			throw error;
+		} finally {
+			client.release();
+		}
+	}
 
 	try {
 		const result = await db.query(

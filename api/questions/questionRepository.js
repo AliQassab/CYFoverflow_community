@@ -205,6 +205,60 @@ export const getQuestionByIdDB = async (idOrSlug) => {
 };
 
 /**
+ * Get a question by ID or slug, including soft-deleted ones (admin use only)
+ */
+export const getDeletedQuestionByIdDB = async (idOrSlug) => {
+	const isPureNumeric = /^\d+$/.test(idOrSlug);
+
+	let result;
+	if (isPureNumeric) {
+		result = await db.query(
+			`SELECT q.*, u.name as author_name, u.email as author_email,
+			 COALESCE(
+				 json_agg(
+					 json_build_object('id', l.id, 'name', l.name)
+				 ) FILTER (WHERE l.id IS NOT NULL),
+				 '[]'::json
+			 ) as labels
+			 FROM questions q
+			 JOIN users u ON q.user_id = u.id
+			 LEFT JOIN question_labels ql ON q.id = ql.question_id
+			 LEFT JOIN labels l ON ql.label_id = l.id
+			 WHERE q.id = $1
+			 GROUP BY q.id, u.name, u.email`,
+			[idOrSlug],
+		);
+	} else {
+		result = await db.query(
+			`SELECT q.*, u.name as author_name, u.email as author_email,
+			 COALESCE(
+				 json_agg(
+					 json_build_object('id', l.id, 'name', l.name)
+				 ) FILTER (WHERE l.id IS NOT NULL),
+				 '[]'::json
+			 ) as labels
+			 FROM questions q
+			 JOIN users u ON q.user_id = u.id
+			 LEFT JOIN question_labels ql ON q.id = ql.question_id
+			 LEFT JOIN labels l ON ql.label_id = l.id
+			 WHERE q.slug = $1
+			 GROUP BY q.id, u.name, u.email`,
+			[idOrSlug],
+		);
+	}
+
+	const question = result.rows[0];
+	if (!question) {
+		return null;
+	}
+
+	return {
+		...question,
+		labels: question.labels || [],
+	};
+};
+
+/**
  * Soft delete a question (sets deleted_at timestamp)
  * Also soft deletes all associated answers (cascading soft delete)
  * @param {number} id - Question ID

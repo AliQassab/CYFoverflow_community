@@ -1,6 +1,6 @@
 import { Editor } from "@tinymce/tinymce-react";
 import { useState, useEffect } from "react";
-import { FaArrowUp, FaArrowDown, FaCheckCircle } from "react-icons/fa";
+import { FaArrowUp, FaArrowDown, FaCheckCircle, FaTrash } from "react-icons/fa";
 
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/useAuth";
@@ -297,20 +297,35 @@ function Answer({ answer, onDelete, onUpdate, questionAuthorId, onAccept }) {
 		);
 	}
 
+	const isDeleted = !!answer.deleted_at;
+
 	return (
 		<div
 			id={`answer-${answer.id}`}
-			className={`bg-white rounded-lg shadow-sm border p-4 sm:p-6 mb-4 ${
-				isAccepted ? "border-green-500 border-2 bg-green-50" : "border-gray-200"
+			className={`rounded-lg shadow-sm border p-4 sm:p-6 mb-4 ${
+				isDeleted
+					? "border-red-300 bg-red-50 opacity-80"
+					: isAccepted
+						? "border-green-500 border-2 bg-green-50"
+						: "bg-white border-gray-200"
 			}`}
 		>
+			{isDeleted && (
+				<div className="flex items-center gap-2 mb-3 text-red-700 text-sm font-semibold">
+					<FaTrash className="w-3.5 h-3.5 shrink-0" />
+					<span>
+						Deleted answer — visible to admins only, hidden from regular users.
+					</span>
+				</div>
+			)}
+
 			<div className="flex gap-3 sm:gap-4">
 				{/* Voting Section */}
 				<div className="flex flex-col items-center gap-1 pt-1">
 					<button
 						type="button"
 						onClick={(e) => handleVote(e, "upvote")}
-						disabled={isVoting || isAuthor || !isLoggedIn}
+						disabled={isDeleted || isVoting || isAuthor || !isLoggedIn}
 						className={`
 							flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded border-2 transition-all
 							${
@@ -318,7 +333,7 @@ function Answer({ answer, onDelete, onUpdate, questionAuthorId, onAccept }) {
 									? "bg-[#281d80] border-[#281d80] text-white"
 									: "bg-white border-gray-300 text-gray-600 hover:border-[#281d80] hover:text-[#281d80]"
 							}
-							${isVoting || isAuthor || !isLoggedIn ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+							${isDeleted || isVoting || isAuthor || !isLoggedIn ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
 						`}
 						title={isAuthor ? "You cannot vote on your own answer" : "Upvote"}
 						aria-label="Upvote"
@@ -331,7 +346,7 @@ function Answer({ answer, onDelete, onUpdate, questionAuthorId, onAccept }) {
 					<button
 						type="button"
 						onClick={(e) => handleVote(e, "downvote")}
-						disabled={isVoting || isAuthor || !isLoggedIn}
+						disabled={isDeleted || isVoting || isAuthor || !isLoggedIn}
 						className={`
 							flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded border-2 transition-all
 							${
@@ -339,7 +354,7 @@ function Answer({ answer, onDelete, onUpdate, questionAuthorId, onAccept }) {
 									? "bg-red-600 border-red-600 text-white"
 									: "bg-white border-gray-300 text-gray-600 hover:border-red-600 hover:text-red-600"
 							}
-							${isVoting || isAuthor || !isLoggedIn ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+							${isDeleted || isVoting || isAuthor || !isLoggedIn ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
 						`}
 						title={isAuthor ? "You cannot vote on your own answer" : "Downvote"}
 						aria-label="Downvote"
@@ -365,7 +380,7 @@ function Answer({ answer, onDelete, onUpdate, questionAuthorId, onAccept }) {
 										userName={answer.author_name}
 										className="text-sm sm:text-base font-semibold text-gray-900"
 									/>
-									{isAccepted && (
+									{isAccepted && !isDeleted && (
 										<span className="flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-green-700 bg-green-100 rounded-full">
 											<FaCheckCircle className="text-green-600" />
 											Accepted
@@ -387,83 +402,85 @@ function Answer({ answer, onDelete, onUpdate, questionAuthorId, onAccept }) {
 							</div>
 						</div>
 
-						{/* Controls */}
-						<div className="flex flex-wrap items-center gap-2">
-							{/* Question Author Controls - Accept Answer */}
-							{isQuestionAuthor && (
-								<button
-									onClick={handleAcceptAnswer}
-									disabled={isAccepting || isAccepted}
-									className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
-										isAccepted
-											? "bg-green-100 text-green-700 border border-green-300 cursor-default"
-											: "bg-green-600 text-white hover:bg-green-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-									}`}
-									title={
-										isAccepted
-											? "This answer is already accepted"
-											: "Accept this answer"
-									}
-								>
-									{isAccepting ? (
-										"Accepting..."
-									) : isAccepted ? (
-										<>
-											<FaCheckCircle className="inline mr-1" />
-											Accepted
-										</>
-									) : (
-										<>
-											<FaCheckCircle className="inline mr-1" />
-											Accept Answer
-										</>
-									)}
-								</button>
-							)}
-
-							{/* Answer Author Controls */}
-							{isAuthor && !isDeleting && (
-								<>
-									<span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full whitespace-nowrap">
-										Your answer
-									</span>
-
+						{/* Controls — hidden for deleted answers */}
+						{!isDeleted && (
+							<div className="flex flex-wrap items-center gap-2">
+								{/* Question Author Controls - Accept Answer */}
+								{isQuestionAuthor && (
 									<button
-										onClick={() => setIsEditing(true)}
-										className="px-2 sm:px-3 py-1 text-xs font-medium text-green-600 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors cursor-pointer whitespace-nowrap"
-										title="Edit answer"
+										onClick={handleAcceptAnswer}
+										disabled={isAccepting || isAccepted}
+										className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-colors whitespace-nowrap ${
+											isAccepted
+												? "bg-green-100 text-green-700 border border-green-300 cursor-default"
+												: "bg-green-600 text-white hover:bg-green-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+										}`}
+										title={
+											isAccepted
+												? "This answer is already accepted"
+												: "Accept this answer"
+										}
 									>
-										Edit
+										{isAccepting ? (
+											"Accepting..."
+										) : isAccepted ? (
+											<>
+												<FaCheckCircle className="inline mr-1" />
+												Accepted
+											</>
+										) : (
+											<>
+												<FaCheckCircle className="inline mr-1" />
+												Accept Answer
+											</>
+										)}
 									</button>
+								)}
 
+								{/* Answer Author Controls */}
+								{isAuthor && !isDeleting && (
+									<>
+										<span className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full whitespace-nowrap">
+											Your answer
+										</span>
+
+										<button
+											onClick={() => setIsEditing(true)}
+											className="px-2 sm:px-3 py-1 text-xs font-medium text-green-600 bg-green-50 border border-green-200 rounded hover:bg-green-100 transition-colors cursor-pointer whitespace-nowrap"
+											title="Edit answer"
+										>
+											Edit
+										</button>
+
+										<button
+											onClick={handleDeleteClick}
+											className="px-2 sm:px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors cursor-pointer whitespace-nowrap"
+											title="Delete answer"
+										>
+											Delete
+										</button>
+									</>
+								)}
+
+								{/* Admin Controls — visible when admin is not the answer author */}
+								{isAdmin && !isAuthor && !isDeleting && (
 									<button
 										onClick={handleDeleteClick}
 										className="px-2 sm:px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors cursor-pointer whitespace-nowrap"
-										title="Delete answer"
+										title="Admin: Delete answer"
 									>
-										Delete
+										🛡️ Delete
 									</button>
-								</>
-							)}
+								)}
 
-							{/* Admin Controls — visible when admin is not the answer author */}
-							{isAdmin && !isAuthor && !isDeleting && (
-								<button
-									onClick={handleDeleteClick}
-									className="px-2 sm:px-3 py-1 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors cursor-pointer whitespace-nowrap"
-									title="Admin: Delete answer"
-								>
-									🛡️ Delete
-								</button>
-							)}
-
-							{/* Show deleting indicator when deletion is in progress */}
-							{isAuthor && isDeleting && (
-								<span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full whitespace-nowrap italic">
-									Deleting...
-								</span>
-							)}
-						</div>
+								{/* Show deleting indicator when deletion is in progress */}
+								{isAuthor && isDeleting && (
+									<span className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full whitespace-nowrap italic">
+										Deleting...
+									</span>
+								)}
+							</div>
+						)}
 					</div>
 
 					{/* READ-ONLY CONTENT DISPLAY */}
