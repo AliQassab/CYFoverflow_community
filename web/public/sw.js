@@ -132,17 +132,25 @@ self.addEventListener("push", (event) => {
 		}
 	}
 
+	const badgeCount = notificationData.data?.badgeCount;
+
 	event.waitUntil(
-		self.registration.showNotification(notificationData.title, {
-			body: notificationData.body,
-			icon: notificationData.icon,
-			badge: notificationData.badge,
-			data: notificationData.data,
-			tag: notificationData.tag,
-			requireInteraction: notificationData.requireInteraction,
-			vibrate: [200, 100, 200],
-			timestamp: Date.now(),
-		}),
+		Promise.all([
+			self.registration.showNotification(notificationData.title, {
+				body: notificationData.body,
+				icon: notificationData.icon,
+				badge: notificationData.badge,
+				data: notificationData.data,
+				tag: notificationData.tag,
+				requireInteraction: notificationData.requireInteraction,
+				vibrate: [200, 100, 200],
+				timestamp: Date.now(),
+			}),
+			// Set the numeric badge on the app icon (Chrome/Edge/Android PWA)
+			badgeCount !== undefined && "setAppBadge" in self.registration
+				? self.registration.setAppBadge(badgeCount).catch(() => {})
+				: Promise.resolve(),
+		]),
 	);
 });
 

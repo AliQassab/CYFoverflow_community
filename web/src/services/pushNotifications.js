@@ -121,7 +121,7 @@ export const requestWebPushPermission = async () => {
 			return null;
 		}
 
-		const vapidKey = getVapidPublicKey();
+		const vapidKey = await getVapidPublicKey();
 
 		if (!vapidKey || vapidKey.trim() === "") {
 			return null;
@@ -143,11 +143,22 @@ export const requestWebPushPermission = async () => {
 };
 
 /**
- * Get VAPID public key (should be set from environment/config)
- * @returns {string} VAPID public key
+ * Fetch VAPID public key from the API at runtime.
+ * This avoids needing a build-time env var in Docker deployments.
+ * @returns {Promise<string>} VAPID public key or empty string
  */
-const getVapidPublicKey = () => {
-	return import.meta.env.VITE_VAPID_PUBLIC_KEY || "";
+let _cachedVapidKey = null;
+const getVapidPublicKey = async () => {
+	if (_cachedVapidKey !== null) return _cachedVapidKey;
+	try {
+		const response = await fetch(`${API_BASE_URL}/push/config`);
+		if (!response.ok) return "";
+		const data = await response.json();
+		_cachedVapidKey = data.vapidPublicKey || "";
+		return _cachedVapidKey;
+	} catch {
+		return "";
+	}
 };
 
 /**

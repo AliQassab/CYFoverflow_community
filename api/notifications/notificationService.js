@@ -31,6 +31,10 @@ export const createAnswerNotification = async (
 			related_answer_id: answerId,
 		});
 
+		const badgeCount = await repository
+			.getUnreadNotificationCountDB(questionAuthorId)
+			.catch(() => undefined);
+
 		// Send push notification (non-blocking)
 		pushNotificationService
 			.sendPushNotification(questionAuthorId, {
@@ -40,6 +44,7 @@ export const createAnswerNotification = async (
 					type: "answer_added",
 					questionId: questionId.toString(),
 					answerId: answerId.toString(),
+					badgeCount,
 				},
 			})
 			.catch((error) => {
@@ -102,6 +107,10 @@ export const createCommentNotification = async (
 			related_comment_id: commentId,
 		});
 
+		const badgeCount = await repository
+			.getUnreadNotificationCountDB(questionAuthorId)
+			.catch(() => undefined);
+
 		// Send push notification (non-blocking)
 		pushNotificationService
 			.sendPushNotification(questionAuthorId, {
@@ -112,6 +121,7 @@ export const createCommentNotification = async (
 					questionId: questionId.toString(),
 					answerId: answerId ? answerId.toString() : null,
 					commentId: commentId.toString(),
+					badgeCount,
 				},
 			})
 			.catch((error) => {
@@ -171,6 +181,10 @@ export const createAcceptedAnswerNotification = async (
 			related_answer_id: answerId,
 		});
 
+		const badgeCount = await repository
+			.getUnreadNotificationCountDB(answerAuthorId)
+			.catch(() => undefined);
+
 		// Send push notification (non-blocking)
 		pushNotificationService
 			.sendPushNotification(answerAuthorId, {
@@ -181,6 +195,7 @@ export const createAcceptedAnswerNotification = async (
 					questionId: questionId.toString(),
 					answerId: answerId.toString(),
 					questionSlug: questionSlug,
+					badgeCount,
 				},
 			})
 			.catch((error) => {

@@ -36,8 +36,17 @@ app.use(configuredMorgan());
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-app.use(API_ROOT, generalLimiter);
-app.use(API_ROOT, speedLimiter);
+// Apply rate limiting to all API routes except the SSE stream
+// (SSE is a long-lived connection and should not count against the limit)
+const rateLimitSkipSSE = (req) => req.path === "/notifications/stream";
+app.use(API_ROOT, (req, res, next) => {
+	if (rateLimitSkipSSE(req)) return next();
+	return generalLimiter(req, res, next);
+});
+app.use(API_ROOT, (req, res, next) => {
+	if (rateLimitSkipSSE(req)) return next();
+	return speedLimiter(req, res, next);
+});
 
 if (config.production) {
 	app.enable("trust proxy");

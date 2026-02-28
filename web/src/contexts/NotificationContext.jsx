@@ -207,6 +207,16 @@ export const NotificationProvider = ({ children }) => {
 		[token, notifications],
 	);
 
+	// Sync the app icon badge count with unread notifications
+	useEffect(() => {
+		if (!("setAppBadge" in navigator)) return;
+		if (unreadCount > 0) {
+			navigator.setAppBadge(unreadCount).catch(() => {});
+		} else {
+			navigator.clearAppBadge().catch(() => {});
+		}
+	}, [unreadCount]);
+
 	// Initial fetch when logged in
 	useEffect(() => {
 		if (isLoggedIn && token) {

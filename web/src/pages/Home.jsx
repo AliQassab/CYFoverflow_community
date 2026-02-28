@@ -218,6 +218,11 @@ function Home() {
 				);
 
 				if (!response.ok) {
+					if (response.status === 429) {
+						throw new Error(
+							"Too many requests — please wait a moment and try again.",
+						);
+					}
 					throw new Error(`Failed to fetch questions: ${response.status}`);
 				}
 

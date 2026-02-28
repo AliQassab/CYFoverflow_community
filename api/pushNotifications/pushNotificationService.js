@@ -1,5 +1,19 @@
+import webPush from "web-push";
+
 import * as deviceTokenService from "../deviceTokens/deviceTokenService.js";
+import config from "../utils/config.js";
 import logger from "../utils/logger.js";
+
+let webPushInitialised = false;
+
+const initWebPush = () => {
+	if (webPushInitialised) return true;
+	const { vapidPublicKey, vapidPrivateKey, vapidSubject } = config;
+	if (!vapidPublicKey || !vapidPrivateKey) return false;
+	webPush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+	webPushInitialised = true;
+	return true;
+};
 
 /**
  * Push notification service
@@ -52,7 +66,7 @@ export const sendPushNotification = async (userId, notification) => {
 		// Send to each platform
 		for (const [platformType, tokens] of Object.entries(tokensByPlatform)) {
 			try {
-				const result = await sendToPlatform(platformType, tokens);
+				const result = await sendToPlatform(platformType, tokens, notification);
 				successCount += result.success || 0;
 				failedCount += result.failed || 0;
 			} catch (error) {
@@ -85,14 +99,14 @@ export const sendPushNotification = async (userId, notification) => {
  * @param {Array<string>} tokens - Array of device tokens
  * @returns {Promise<Object>} Result with success/failure counts
  */
-const sendToPlatform = async (platform, tokens) => {
+const sendToPlatform = async (platform, tokens, notification) => {
 	switch (platform) {
 		case deviceTokenService.PLATFORMS.ANDROID:
 			return sendToAndroid(tokens);
 		case deviceTokenService.PLATFORMS.IOS:
 			return sendToIOS(tokens);
 		case deviceTokenService.PLATFORMS.WEB:
-			return sendToWeb(tokens);
+			return sendToWeb(tokens, notification);
 		case deviceTokenService.PLATFORMS.DESKTOP:
 			return sendToDesktop(tokens);
 		default:
@@ -131,15 +145,45 @@ const sendToIOS = async (tokens) => {
 
 /**
  * Send push notification to web browsers (Web Push API)
- * @param {Array<string>} tokens - Web push subscription tokens
+ * @param {Array<string>} tokens - Web push subscription JSON strings
+ * @param {Object} notification - Notification data
  * @returns {Promise<Object>} Result with success/failure counts
  */
-const sendToWeb = async (tokens) => {
-	// TODO: Implement Web Push API integration
-	return {
-		success: tokens.length,
-		failed: 0,
-	};
+const sendToWeb = async (tokens, notification = {}) => {
+	if (!initWebPush()) {
+		logger.warn("VAPID keys not configured — web push skipped");
+		return { success: 0, failed: tokens.length };
+	}
+
+	const payload = JSON.stringify({
+		title: notification.title || "CYFoverflow",
+		body: notification.body || "You have a new notification",
+		icon: "/favicon.svg",
+		badge: "/favicon.svg",
+		data: notification.data || {},
+		tag: notification.data?.type,
+	});
+
+	let successCount = 0;
+	let failedCount = 0;
+
+	for (const token of tokens) {
+		try {
+			const subscription = JSON.parse(token);
+			await webPush.sendNotification(subscription, payload);
+			successCount++;
+		} catch (error) {
+			// 410 Gone / 404 Not Found = subscription expired, safe to ignore
+			if (error.statusCode === 410 || error.statusCode === 404) {
+				logger.info("Web push subscription expired, should be cleaned up");
+			} else {
+				logger.error("Error sending web push", { error: error.message });
+			}
+			failedCount++;
+		}
+	}
+
+	return { success: successCount, failed: failedCount };
 };
 
 /**

@@ -84,6 +84,11 @@ const createConfig = (overrides) => {
 		storageType: source.STORAGE_TYPE || "local",
 		uploadDir: source.UPLOAD_DIR,
 		s3BaseUrl: source.S3_BASE_URL,
+		vapidPublicKey: source.VAPID_PUBLIC_KEY || null,
+		vapidPrivateKey: source.VAPID_PRIVATE_KEY || null,
+		vapidSubject:
+			source.VAPID_SUBJECT ||
+			`mailto:${source.EMAIL_SOURCE || "admin@example.com"}`,
 		adminEmails: (source.ADMIN_EMAILS || "")
 			.split(",")
 			.map((e) => e.trim().toLowerCase())

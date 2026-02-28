@@ -10,11 +10,11 @@ import logger from "./logger.js";
 
 /**
  * General API rate limiter
- * Limits: 100 requests per 15 minutes per IP
+ * Limits: 500 requests per 15 minutes per IP
  */
 export const generalLimiter = rateLimit({
 	windowMs: 15 * 60 * 1000, // 15 minutes
-	max: 100, // Limit each IP to 100 requests per windowMs
+	max: 500, // Limit each IP to 500 requests per windowMs
 	skip: () => {
 		try {
 			return config.isTest;
@@ -107,7 +107,7 @@ export const sensitiveLimiter = rateLimit({
  */
 export const speedLimiter = slowDown({
 	windowMs: 15 * 60 * 1000, // 15 minutes
-	delayAfter: 50, // Allow 50 requests per windowMs without delay
+	delayAfter: 200, // Allow 200 requests per windowMs without delay
 	delayMs: () => 500, // Add 500ms delay per request after delayAfter (v2 API)
 	maxDelayMs: 20000, // Maximum delay of 20 seconds
 	skipSuccessfulRequests: false,
