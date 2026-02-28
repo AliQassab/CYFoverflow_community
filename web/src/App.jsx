@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 
 import ErrorBoundary from "./components/ErrorBoundary";
+import InstallPrompt from "./components/InstallPrompt";
 import Navbar from "./components/Navbar";
 import PushNotificationHandler from "./components/PushNotificationHandler";
 import { AuthProvider } from "./contexts/AuthContext.jsx";
@@ -35,6 +36,7 @@ function App() {
 									<SearchProvider>
 										<LabelFilterProvider>
 											<PushNotificationHandler />
+											<InstallPrompt />
 											<Router>
 												<div
 													className="min-h-screen"
