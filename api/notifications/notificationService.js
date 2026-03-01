@@ -239,7 +239,7 @@ export const createAcceptedAnswerNotification = async (
  */
 export const deleteAnswerNotifications = async (answerId) => {
 	try {
-		// Get affected user IDs before deletion
+		// Get affected notifications before deletion (we need IDs + user IDs)
 		const notifications =
 			await repository.getNotificationsByAnswerIdDB(answerId);
 		const affectedUserIds = new Set(notifications.map((n) => n.user_id));
@@ -247,7 +247,14 @@ export const deleteAnswerNotifications = async (answerId) => {
 		const deletedCount =
 			await repository.deleteNotificationsByAnswerIdDB(answerId);
 
-		// Broadcast to affected users
+		// Broadcast notification_deleted for each removed notification so dropdowns update immediately
+		notifications.forEach((notification) => {
+			sseHandler.broadcastToUser(notification.user_id, "notification_deleted", {
+				notificationId: notification.id,
+			});
+		});
+
+		// Broadcast updated unread count to each affected user
 		affectedUserIds.forEach((userId) => {
 			repository
 				.getUnreadNotificationCountDB(userId)
@@ -277,7 +284,7 @@ export const deleteAnswerNotifications = async (answerId) => {
  */
 export const deleteQuestionNotifications = async (questionId) => {
 	try {
-		// Get affected user IDs before deletion
+		// Get affected notifications before deletion (we need IDs + user IDs)
 		const notifications =
 			await repository.getNotificationsByQuestionIdDB(questionId);
 		const affectedUserIds = new Set(notifications.map((n) => n.user_id));
@@ -285,7 +292,14 @@ export const deleteQuestionNotifications = async (questionId) => {
 		const deletedCount =
 			await repository.deleteNotificationsByQuestionIdDB(questionId);
 
-		// Broadcast to affected users
+		// Broadcast notification_deleted for each removed notification so dropdowns update immediately
+		notifications.forEach((notification) => {
+			sseHandler.broadcastToUser(notification.user_id, "notification_deleted", {
+				notificationId: notification.id,
+			});
+		});
+
+		// Broadcast updated unread count to each affected user
 		affectedUserIds.forEach((userId) => {
 			repository
 				.getUnreadNotificationCountDB(userId)
