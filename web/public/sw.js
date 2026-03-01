@@ -160,11 +160,13 @@ self.addEventListener("notificationclick", (event) => {
 	event.notification.close();
 
 	const data = event.notification.data || {};
-	const { questionId, answerId, commentId } = data;
+	const { questionId, questionSlug, answerId, commentId } = data;
 
+	// Prefer slug-based URLs; fall back to numeric ID (both are accepted by the API)
+	const questionRef = questionSlug || questionId;
 	let url = "/";
-	if (questionId) {
-		url = `/questions/${questionId}`;
+	if (questionRef) {
+		url = `/questions/${questionRef}`;
 		if (answerId) url += `#answer-${answerId}`;
 		if (commentId) url += `#comment-${commentId}`;
 	}

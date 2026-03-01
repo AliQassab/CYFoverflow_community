@@ -42,6 +42,7 @@ export const createAnswer = async (content, userId, questionId) => {
 					questionId,
 					answererName,
 					question.title,
+					question.slug,
 				)
 				.catch((error) => {
 					logger.error("Failed to create answer notification", {

@@ -43,6 +43,8 @@ export const NotificationProvider = ({ children }) => {
 	const sseCleanupRef = useRef(null);
 	const useSSE = useRef(true); // Try SSE first, fallback to polling if it fails
 	const sseRetryTimerRef = useRef(null); // Timer to re-attempt SSE after polling fallback
+	// Incrementing this triggers the SSE/polling effect to re-run after the retry timer fires
+	const [sseRetryCount, setSseRetryCount] = useState(0);
 
 	// Fetch notifications
 	const fetchNotifications = useCallback(
@@ -311,9 +313,8 @@ export const NotificationProvider = ({ children }) => {
 							sseRetryTimerRef.current = setTimeout(() => {
 								useSSE.current = true;
 								sseRetryTimerRef.current = null;
-								// Trigger the useEffect to re-run by clearing the ref
-								// The effect will re-run on the next token change or we
-								// can force it via a state update in the next poll
+								// Increment counter to trigger the effect to re-run immediately
+								setSseRetryCount((c) => c + 1);
 							}, 60000);
 						},
 					},
@@ -393,7 +394,7 @@ export const NotificationProvider = ({ children }) => {
 			}
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [isLoggedIn, token]);
+	}, [isLoggedIn, token, sseRetryCount]);
 
 	return (
 		<NotificationContext.Provider

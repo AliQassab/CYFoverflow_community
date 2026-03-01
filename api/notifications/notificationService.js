@@ -18,6 +18,7 @@ export const createAnswerNotification = async (
 	questionId,
 	answererName,
 	questionTitle,
+	questionSlug,
 ) => {
 	try {
 		// Don't notify if user answered their own question
@@ -44,6 +45,7 @@ export const createAnswerNotification = async (
 					type: "answer_added",
 					questionId: questionId.toString(),
 					answerId: answerId.toString(),
+					questionSlug: questionSlug || undefined,
 					badgeCount,
 				},
 			})
@@ -92,6 +94,7 @@ export const createCommentNotification = async (
 	questionId,
 	answerId,
 	commenterName,
+	questionSlug,
 ) => {
 	try {
 		const message = answerId
@@ -121,6 +124,7 @@ export const createCommentNotification = async (
 					questionId: questionId.toString(),
 					answerId: answerId ? answerId.toString() : null,
 					commentId: commentId.toString(),
+					questionSlug: questionSlug || undefined,
 					badgeCount,
 				},
 			})

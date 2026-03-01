@@ -58,6 +58,7 @@ export const createCommentOnAnswer = async (content, answerId, userId) => {
 						answer.question_id,
 						answerId,
 						commenterName,
+						question.slug,
 					)
 					.catch((error) => {
 						logger.error("Failed to create comment notification", {
@@ -121,6 +122,7 @@ export const createCommentOnQuestion = async (content, questionId, userId) => {
 					questionId,
 					null,
 					commenterName,
+					question.slug,
 				)
 				.catch((error) => {
 					logger.error("Failed to create comment notification", {

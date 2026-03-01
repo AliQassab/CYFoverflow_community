@@ -10,6 +10,14 @@ import * as pushNotificationService from "../services/pushNotifications";
 export const usePushNotifications = () => {
 	const { isLoggedIn, token, user } = useAuth();
 	const registeredRef = useRef(false);
+	// Keep the last valid token in a ref so we can use it during logout cleanup
+	// (by the time the cleanup effect runs, token is already null in context)
+	const lastValidTokenRef = useRef(null);
+
+	// Update saved token whenever we have a valid one
+	if (isLoggedIn && token) {
+		lastValidTokenRef.current = token;
+	}
 
 	useEffect(() => {
 		if (!isLoggedIn || !token || registeredRef.current) {
@@ -62,11 +70,34 @@ export const usePushNotifications = () => {
 		registerWebPush();
 	}, [isLoggedIn, token, user]);
 
-	// Cleanup: unregister on logout
+	// Cleanup: unregister device from backend on logout
 	useEffect(() => {
 		if (!isLoggedIn && registeredRef.current) {
 			registeredRef.current = false;
-			// Note: Device unregistration should be handled by logout
+			const savedToken = lastValidTokenRef.current;
+			lastValidTokenRef.current = null;
+
+			if (
+				savedToken &&
+				typeof window !== "undefined" &&
+				navigator.serviceWorker
+			) {
+				navigator.serviceWorker.ready
+					.then((registration) => registration.pushManager.getSubscription())
+					.then((subscription) => {
+						if (subscription) {
+							const deviceToken =
+								pushNotificationService.subscriptionToToken(subscription);
+							return pushNotificationService.unregisterDevice(
+								deviceToken,
+								savedToken,
+							);
+						}
+					})
+					.catch((error) => {
+						console.error("Error unregistering push device on logout:", error);
+					});
+			}
 		}
 	}, [isLoggedIn]);
 };
