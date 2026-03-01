@@ -11,7 +11,7 @@ CYFoverflow is a full-stack, community-driven Q&A platform built for the [CodeYo
 
 ---
 
-## Features
+## Features:
 
 ### Core Q&A
 
